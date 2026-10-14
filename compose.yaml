@@ -1,0 +1,44 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    environment:
+      DATABASE_PATH: /data/cc-assistant.sqlite
+      PUBLIC_ORIGIN: https://${DOMAIN:?Set DOMAIN in .env}
+      TRUST_PROXY: '1'
+    volumes:
+      - app_data:/data
+    expose:
+      - '3000'
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
+    security_opt:
+      - no-new-privileges:true
+  caddy:
+    image: caddy:2.10.2-alpine
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in .env}
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
+volumes:
+  app_data:
+  caddy_data:
+  caddy_config:

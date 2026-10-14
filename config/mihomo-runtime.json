@@ -1,0 +1,7 @@
+{
+  "version": "1.19.24",
+  "assets": {
+    "arm64": { "name": "mihomo-darwin-arm64-v1.19.24.gz", "sha256": "3615d13fbddd8b8e752f95f492c8887ba629671457fbe55ba80d523d6e2e03c3" },
+    "x64": { "name": "mihomo-darwin-amd64-v1-v1.19.24.gz", "sha256": "a84886199eed2fa4a3027828f713046a0236ec06b9e015e127b22921f8c7ac92" }
+  }
+}

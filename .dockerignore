@@ -1,0 +1,14 @@
+node_modules
+.next
+.git
+.env*
+data
+work
+outputs
+desktop
+cloud
+*.tsbuildinfo
+
+backups
+
+tests
