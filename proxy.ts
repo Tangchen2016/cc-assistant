@@ -3,7 +3,7 @@ const limits = new Map<string, { count: number; until: number }>();
 export function proxy(request: NextRequest) {
   if (!["POST", "PUT", "DELETE", "PATCH"].includes(request.method)) return NextResponse.next();
   const origin = request.headers.get("origin");
-  const expected = process.env.PUBLIC_ORIGIN || new URL(request.url).origin;
+  const expected = process.env.PUBLIC_ORIGIN || `${new URL(request.url).protocol}//${request.headers.get("host") ?? new URL(request.url).host}`;
   if (origin && origin !== expected || request.headers.get("sec-fetch-site") === "cross-site") return NextResponse.json({ error: "拒绝跨站写入。" }, { status: 403 });
   if (!(request.headers.get("content-type") ?? "").startsWith("application/json") && request.method !== "DELETE") return NextResponse.json({ error: "请求必须为 JSON。" }, { status: 415 });
   // Trust X-Forwarded-For only when the app is behind the bundled Caddy proxy.

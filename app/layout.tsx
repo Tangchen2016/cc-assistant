@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import "./workspace.css";
+import "./wizard.css";
 
 export const metadata: Metadata = {
   title: "cc助手 · Clash 增强",

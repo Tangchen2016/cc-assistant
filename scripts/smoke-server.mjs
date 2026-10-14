@@ -36,7 +36,7 @@ try {
   assert.match(await downloaded.text(), /DOMAIN-SUFFIX,claude.ai,Claude/);
   assert.equal((await call('/api/remote-subscriptions/' + saved.id, undefined, saved.downloadKey)).status, 404);
   assert.equal((await call('/api/remote-subscriptions', cache, undefined, undefined, 'https://evil.example')).status, 403);
-  assert.equal((await call('/api/inspect', { sourceUrl: 'http://169.254.169.254/' })).status, 400);
+  assert.equal((await call('/api/inspect', { sourceUrl: 'http://169.254.169.254/' }, undefined, undefined, base)).status, 400);
   await stop(); await start();
   downloaded = await call(saved.subscriptionPath); assert.equal(downloaded.status, 200);
   profile.name = '增强-改名';

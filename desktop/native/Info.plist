@@ -5,7 +5,7 @@
 <key>CFBundleDisplayName</key><string>cc助手</string>
 <key>CFBundleIdentifier</key><string>local.subscription.studio</string>
 <key>CFBundleVersion</key><string>2</string>
-<key>CFBundleShortVersionString</key><string>1.1.0</string>
+<key>CFBundleShortVersionString</key><string>1.2.0</string>
 <key>CFBundleExecutable</key><string>SubscriptionStudio</string>
 <key>CFBundleIconFile</key><string>AppIcon</string>
 <key>CFBundlePackageType</key><string>APPL</string>
