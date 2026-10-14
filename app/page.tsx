@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowDownToLine, Check, Copy, Eye, EyeOff, GitBranch, Link2, LoaderCircle, Plus, RefreshCw, ShieldCheck } from "lucide-react";
+import { ArrowDownToLine, Check, Copy, Eye, EyeOff, GitBranch, Link2, LoaderCircle, Plus, RefreshCw, ShieldCheck, Network, ListFilter, FileCode2 } from "lucide-react";
 import type { Group, Inspection, Profile, RemoteSubscription, SavedProfile } from "./lib/types";
 import GroupEditor from "./components/GroupEditor";
 import RuleEditor from "./components/RuleEditor";
@@ -327,10 +327,18 @@ export default function Home() {
     finally { setBusy(""); }
   }
 
-  return <div className={`site-shell ${desktop ? "desktop-shell" : ""}`}>
-    <header className="topbar"><a className="brand" href={origin || "."} aria-label={desktop ? "cc助手首页" : "cc助手首页"}><span className="brand-mark"><GitBranch size={22} /></span><span>{desktop ? "cc助手" : "cc助手"}<small>{desktop ? "CC ASSISTANT" : "CC ASSISTANT"}</small></span></a><span className="topbar-note"><span className="status-dot" />{desktop ? "本机拉取 · 配置自动保存" : "源订阅实时更新"}</span></header>
+  return <div className={`site-shell ${desktop ? "desktop-shell" : "web-shell"}`}>
+    {!desktop && <aside className="web-sidebar">
+      <a className="web-brand" href="#source-title" aria-label="cc助手首页"><span className="web-brand-icon"><GitBranch size={21} /></span><span>cc助手<small>网络配置助手</small></span></a>
+      <div className="nav-caption">工作区</div>
+      <nav aria-label="工作区导航"><a className="nav-active" href="#source-title"><GitBranch size={17} /><span>Clash 增强</span><span className="nav-active-dot" /></a></nav>
+      <div className="nav-caption section-caption">当前配置</div>
+      <nav className="section-navigation" aria-label="配置区导航"><a href="#source-title"><Link2 size={16} />源订阅</a><a href="#groups-title"><Network size={16} />节点与链路</a><a href="#rules-title"><ListFilter size={16} />域名规则</a><a href="#output-title"><FileCode2 size={16} />增强订阅</a></nav>
+      <div className="sidebar-bottom"><span className="sidebar-privacy"><ShieldCheck size={15} />独立管理密钥</span><p>管理链接与订阅链接分开保存。</p><span className="sidebar-version">CC ASSISTANT</span></div>
+    </aside>}
+    <header className="topbar">{desktop ? <a className="brand" href={origin || "."} aria-label="cc助手首页"><span className="brand-mark"><GitBranch size={22} /></span><span>cc助手<small>CC ASSISTANT</small></span></a> : <div className="web-breadcrumb"><span>工作区</span><span className="breadcrumb-separator">/</span><strong>Clash 增强</strong></div>}<span className="topbar-note"><span className="status-dot" />{desktop ? "本机拉取 · 配置自动保存" : "源订阅实时更新"}</span></header>
     <main className="workspace">
-      <div className="page-heading"><div><p className="eyebrow">订阅增强 · CLASH / MIHOMO</p><h1>{desktop ? "clash增强" : "给指定网站，固定一条线路。"}</h1><p>{desktop ? "为指定域名选择固定节点，保留原订阅规则。" : "保留原订阅，添加独立代理组和域名规则，生成新的订阅地址。"}</p></div>{saved && !desktop && <button className="button secondary" onClick={newProfile} disabled={!!busy}><Plus size={16} />新建配置</button>}</div>
+      <div className="page-heading"><div><p className="eyebrow">订阅增强 · CLASH / MIHOMO</p><h1>{desktop ? "clash增强" : "Clash 增强"}</h1><p>{desktop ? "为指定域名选择固定节点，保留原订阅规则。" : "为指定域名配置独立节点，生成可自动更新的订阅。"}</p></div>{saved && !desktop && <button className="button secondary" onClick={newProfile} disabled={!!busy}><Plus size={16} />新建配置</button>}</div>
       {desktop && <div className="source-card desktop-library"><label className="field"><span className="input-label">本机保存的配置</span><select aria-label="本机保存的配置" value={saved?.id ?? ""} onChange={(event) => void selectSaved(event.target.value)} disabled={!!busy || !desktopReady}><option value="">新配置 / 未生成草稿</option>{library.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><div className="desktop-login-item"><label><input type="checkbox" checked={loginItem.enabled === true} disabled={!desktopReady || loginItem.pending || loginItem.enabled === null} onChange={(event) => updateLoginItem(event.target.checked)} />登录时启动</label>{loginItem.pending && <small><LoaderCircle className="spin" size={12} />读取系统状态…</small>}{loginItem.needsApproval && <><small>需在系统设置中允许</small><button className="button text-button" onClick={() => window.webkit?.messageHandlers?.desktop?.postMessage({ action: "openLoginSettings" })}>打开登录项设置</button></>}{loginItem.error && <><small role="status">{loginItem.error}</small><button className="button text-button" onClick={() => updateLoginItem()} disabled={loginItem.pending}>重新读取</button></>}</div><button className="button secondary" onClick={newProfile} disabled={!!busy || !desktopReady}><Plus size={16} />新建配置</button></div>}
       <section className="source-card" aria-labelledby="source-title">
         <div className="section-head"><div className="step-heading"><span className="step-number">01</span><h2 id="source-title">源订阅</h2></div><span className="tag">实时拉取</span></div>

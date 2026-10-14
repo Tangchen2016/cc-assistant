@@ -1,0 +1,116 @@
+/* Server website workspace. Native macOS styling remains scoped separately. */
+.web-shell {
+  --ink: #222a35;
+  --muted: #717b89;
+  --line: #e4e7ec;
+  --teal: #3267d5;
+  --teal-soft: #edf3ff;
+  background: #f6f7f9;
+  min-height: 100vh;
+  color: var(--ink);
+  font-size: 13px;
+}
+.web-sidebar { position: fixed; inset: 0 auto 0 0; width: 204px; z-index: 20; background: #fff; border-right: 1px solid var(--line); display: flex; flex-direction: column; padding: 28px 16px 20px; }
+.web-brand { display: flex; align-items: center; gap: 10px; margin: 0 8px 34px; color: #202938; text-decoration: none; font-size: 18px; font-weight: 650; letter-spacing: -.5px; }
+.web-brand-icon { display: grid; place-items: center; height: 36px; width: 36px; border-radius: 10px; background: #3267d5; color: white; }
+.web-brand small { display: block; margin-top: 2px; font-size: 10px; letter-spacing: .3px; color: #89919c; font-weight: 400; }
+.nav-caption { padding: 0 12px; margin-bottom: 9px; font-size: 10px; color: #969da7; letter-spacing: .5px; }
+.web-sidebar nav { display: flex; flex-direction: column; gap: 4px; }
+.web-sidebar nav a { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 7px; font-size: 12px; color: #6d7684; text-decoration: none; }
+.web-sidebar nav a:hover { background: #f5f7fa; color: #263750; }
+.web-sidebar nav a.nav-active { background: #edf3ff; color: #3267d5; font-weight: 600; }
+.nav-active-dot { margin-left: auto; width: 5px; height: 5px; border-radius: 50%; background: #3267d5; }
+.section-caption { margin-top: 30px; }
+.sidebar-bottom { margin-top: auto; padding: 18px 10px 0; border-top: 1px solid var(--line); }
+.sidebar-privacy { display: flex; align-items: center; gap: 7px; font-size: 11px; color: #6f7986; }
+.sidebar-bottom p { font-size: 10px; color: #989faa; margin-top: 7px; line-height: 1.8; }
+.sidebar-version { display: block; font-size: 9px; letter-spacing: 1.4px; color: #a4acb7; margin-top: 23px; }
+.web-shell .topbar { position: sticky; top: 0; z-index: 10; margin-left: 204px; height: 58px; padding: 0 30px; background: #fff; color: var(--ink); border-bottom: 1px solid var(--line); }
+.web-breadcrumb { display: flex; gap: 12px; font-size: 11px; color: #8a939f; align-items: center; }
+.web-breadcrumb strong { color: #596374; font-size: 11px; font-weight: 500; }
+.breadcrumb-separator { color: #c4cad2; }
+.web-shell .topbar-note { color: #768293; font-size: 10px; padding: 5px 9px; border: 1px solid #e9edf2; border-radius: 20px; }
+.web-shell .status-dot { background: #43a383; height: 5px; width: 5px; }
+.web-shell .workspace { margin-left: 204px; max-width: none; padding: 28px 30px 24px; }
+.web-shell .page-heading { margin-bottom: 24px; }
+.web-shell .eyebrow, .web-shell .step-number { display: none; }
+.web-shell h1 { font-size: 25px; letter-spacing: -.6px; font-weight: 650; margin-bottom: 7px; color: #202936; }
+.web-shell .page-heading > div > p:last-child { color: #7d8592; font-size: 12px; }
+.web-shell h2 { font-size: 14px; font-weight: 600; letter-spacing: 0; }
+.web-shell .source-card, .web-shell .panel, .web-shell .output-card { padding: 20px; border: 1px solid var(--line); background: #fff; border-radius: 10px; box-shadow: 0 2px 5px #1d2a3b03; }
+.web-shell .section-head, .web-shell .output-heading { margin-bottom: 14px; }
+.web-shell .step-heading { gap: 0; }
+.web-shell .tag { padding: 3px 8px; background: #f0f5ff; color: #5278bc; border-radius: 4px; font-size: 10px; font-weight: 500; }
+.web-shell .tag.muted { color: #848c97; background: #f4f5f7; }
+.web-shell .input-label { font-size: 11px; font-weight: 500; color: #788291; margin-bottom: 6px; }
+.web-shell input { height: 36px; padding: 8px 10px; border-radius: 6px; font-size: 12px; color: #3b4657; }
+.web-shell input::placeholder { color: #a2a9b4; }
+.web-shell .button { height: 36px; padding: 7px 13px; border-radius: 6px; font-size: 12px; font-weight: 500; }
+.web-shell .primary { background: #3267d5; border-color: #3267d5; }
+.web-shell .primary:hover:enabled { background: #2456be; border-color: #2456be; }
+.web-shell .secondary { color: #566172; border-color: #e0e5ec; }
+.web-shell .button.text-button { color: #4777cb; height: auto; padding: 2px 0; font-size: 11px; }
+.web-shell .button:disabled { opacity: 1; color: #9babc4; background: #edf1f7; border-color: #edf1f7; }
+.web-shell .text-button:disabled { background: transparent; }
+.web-shell .icon-button { height: 28px; width: 28px; color: #9aa4b1; }
+.web-shell .secret-input { border-radius: 6px; border-color: #dfe4ec; gap: 8px; padding-left: 11px; }
+.web-shell .secret-input input { font-size: 12px; }
+.web-shell .source-form { gap: 10px; }
+.web-shell .helper { font-size: 10px; line-height: 1.7; color: #929aa7; margin-top: 9px; }
+.web-shell .source-summary { font-size: 11px; border-color: #eff1f5; }
+.web-shell .editor-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr); gap: 18px; margin-top: 18px; align-items: stretch; }
+.web-shell .panel { min-height: 0; }
+.web-shell .section-description { color: #929aa7; font-size: 11px; margin-bottom: 18px; }
+.web-shell .group-tabs { gap: 5px; margin-bottom: 16px; }
+.web-shell .group-tab { border-radius: 6px; font-size: 11px; padding: 5px 8px; border-color: #e3e8ef; background: white; color: #7b8594; }
+.web-shell .group-tab.active { color: #366dce; background: #f0f5ff; border-color: #cdddfa; }
+.web-shell .group-tab.active small { background: #e4edff; color: #6a8ac1; }
+.web-shell .group-title-form { margin-bottom: 12px; }
+.web-shell .chain-settings { background: #f8f9fc; border-color: #e9edf3; border-radius: 6px; padding: 10px 11px; margin-bottom: 15px; }
+.web-shell .chain-toggle { color: #697587; font-size: 11px; }
+.web-shell .chain-toggle input, .web-shell .node-region-filter input { height: 13px; min-height: 0; padding: 0; accent-color: #3267d5; }
+.web-shell .chain-settings select { padding: 7px 9px; font-size: 11px; background: white; border-color: #e3e8ef; border-radius: 5px; color: #566172; }
+.web-shell .node-picker-title > span:last-child, .web-shell .node-region-filter { font-size: 10px; color: #8c98a8; }
+.web-shell .node-search { color: #98a5b6; background: #fafbfe; border-color: #e4e9f1; border-radius: 6px 6px 0 0; }
+.web-shell .node-search input { height: 33px; background: transparent; font-size: 11px; }
+.web-shell .latency-toolbar { border-color: #e4e9f1; padding: 7px 9px; color: #8b97a9; font-size: 10px; }
+.web-shell .node-list { height: 225px; border-color: #e4e9f1; border-radius: 0 0 6px 6px; }
+.web-shell .node-row { padding: 8px 9px; border-color: #f0f2f5; font-size: 11px; }
+.web-shell .node-row.selected { background: #f1f5ff; }
+.web-shell .node-row:hover { background: #f7f9fe; }
+.web-shell .node-check { border-color: #cad5e5; border-radius: 4px; }
+.web-shell .selected .node-check { background: #3267d5; border-color: #3267d5; }
+.web-shell .node-chip { color: #4777cb; background: #f0f5ff; border-color: #d9e5fb; }
+.web-shell .node-region-badge { color: #758ab2; background: #f0f4fd; }
+.web-shell .empty-state strong { color: #8290a3; font-size: 12px; }
+.web-shell .empty-state p { color: #a2aab6; font-size: 11px; }
+.web-shell .node-empty svg { color: #c1ccdc; }
+.web-shell .rule-table { margin-top: 18px; border-color: #e5e9ef; border-radius: 6px; }
+.web-shell .rule-table-head { background: #f8f9fc; color: #8f99a7; border-color: #e9edf3; padding: 9px 11px; font-size: 10px; }
+.web-shell .rule-row { padding: 14px 8px 14px 11px; border-color: #edf0f5; }
+.web-shell .rule-match input { padding: 3px 0; height: 26px; font-size: 12px; color: #4d596b; }
+.web-shell .select-wrap select { color: #98a4b5; font-size: 10px; }
+.web-shell .target-select { width: 123px; padding: 6px 8px; border: 1px solid #e8edf6; background: #f6f8fd; }
+.web-shell .target-select select { color: #6787ba; }
+.web-shell .target-select svg { color: #a6b7d1; }
+.web-shell .rule-arrow { color: #c5cfde; }
+.web-shell .add-rule { border-style: solid; color: #6f85a6; border-color: #e1e7f0; background: #fafbfe; border-radius: 6px; padding: 9px; font-size: 11px; }
+.web-shell .rule-info { font-size: 10px; color: #929daa; border-color: #eff1f5; margin-top: 18px; padding-top: 14px; }
+.web-shell .rule-info svg { color: #98b1d2; }
+.web-shell .rule-info strong { color: #6b7b90; }
+.web-shell .output-card { margin-top: 18px; background: #fff; border-top: 1px solid var(--line); }
+.web-shell .save-form { max-width: none; gap: 12px; }
+.web-shell .save-form .field { max-width: 580px; }
+.web-shell .save-status { font-size: 10px; }
+.web-shell .save-status.unsaved { color: #a47730; }
+.web-shell .notice { border-radius: 6px; font-size: 11px; padding: 10px 13px; margin-top: 14px; }
+.web-shell .footer { font-size: 10px; color: #a1a9b5; margin-top: 20px; }
+.web-shell [id$="title"] { scroll-margin-top: 80px; }
+@media (min-width: 1600px) { .web-shell .workspace { max-width: 1360px; margin-left: calc(204px + (100vw - 1564px) / 2); } }
+@media (max-width: 1100px) { .web-sidebar { width: 178px; padding: 26px 12px 18px; } .web-shell .topbar, .web-shell .workspace { margin-left: 178px; } .web-shell .workspace { padding: 24px 22px; } .web-shell .topbar { padding: 0 22px; } .web-shell .editor-grid { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 700px) { .web-sidebar { position: static; width: auto; padding: 14px 18px; border-right: 0; border-bottom: 1px solid var(--line); } .web-brand { margin: 0; font-size: 16px; } .web-brand-icon { width: 30px; height: 30px; border-radius: 8px; } .web-sidebar nav, .web-sidebar .nav-caption, .sidebar-bottom { display: none; } .web-shell .topbar { margin-left: 0; height: 45px; padding: 0 18px; } .web-shell .workspace { margin-left: 0; padding: 22px 16px; } .web-shell h1 { font-size: 22px; } .web-shell .page-heading { margin-bottom: 18px; } .web-shell .source-card, .web-shell .panel, .web-shell .output-card { padding: 16px; } .web-shell .source-form > .button { align-self: stretch; } .web-shell .rule-row { padding: 11px 7px; } .web-shell .target-select { width: 108px; } .web-shell .save-form .field { max-width: none; } .web-shell .footer { gap: 7px; } }
+.web-shell .helper, .web-shell .section-description { color: #7b8696; font-size: 11px; }
+.web-shell .input-label { color: #637084; font-size: 11px; }
+.web-shell .rule-info { color: #7c899a; font-size: 11px; }
+.web-shell .node-row { font-size: 12px; }
+.web-shell .node-empty p { color: #8a95a5; }

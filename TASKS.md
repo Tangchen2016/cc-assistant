@@ -9,3 +9,5 @@
 - [ ] macOS App 接入最终域名（等待用户域名和服务器完成）
 
 Docker Compose 静态校验通过。本机 Docker daemon 未运行，容器运行和公网上 HTTPS 留待 Vultr 验收。
+
+- [x] 网页 UI 重做：侧栏、布局、控件与响应式验收（1280px 双栏、390px 单栏，无横向溢出）
