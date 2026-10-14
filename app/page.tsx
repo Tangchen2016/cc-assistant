@@ -333,7 +333,7 @@ export default function Home() {
       <div className="nav-caption">工作区</div>
       <nav aria-label="工作区导航"><a className="nav-active" href="#source-title"><GitBranch size={17} /><span>Clash 增强</span><span className="nav-active-dot" /></a></nav>
       <div className="nav-caption section-caption">当前配置</div>
-      <nav className="section-navigation" aria-label="配置区导航"><a href="#source-title"><Link2 size={16} />源订阅</a><a href="#groups-title"><Network size={16} />节点与链路</a><a href="#rules-title"><ListFilter size={16} />域名规则</a><a href="#output-title"><FileCode2 size={16} />增强订阅</a></nav>
+      <nav className="section-navigation" aria-label="配置区导航"><a href="#source-title" title="源订阅"><Link2 size={16} />源订阅</a><a href="#groups-title" title="节点与链路"><Network size={16} />节点与链路</a><a href="#rules-title" title="域名规则"><ListFilter size={16} />域名规则</a><a href="#output-title" title="增强订阅"><FileCode2 size={16} />增强订阅</a></nav>
       <div className="sidebar-bottom"><span className="sidebar-privacy"><ShieldCheck size={15} />独立管理密钥</span><p>管理链接与订阅链接分开保存。</p><span className="sidebar-version">CC ASSISTANT</span></div>
     </aside>}
     <header className="topbar">{desktop ? <a className="brand" href={origin || "."} aria-label="cc助手首页"><span className="brand-mark"><GitBranch size={22} /></span><span>cc助手<small>CC ASSISTANT</small></span></a> : <div className="web-breadcrumb"><span>工作区</span><span className="breadcrumb-separator">/</span><strong>Clash 增强</strong></div>}<span className="topbar-note"><span className="status-dot" />{desktop ? "本机拉取 · 配置自动保存" : "源订阅实时更新"}</span></header>
