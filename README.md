@@ -1,6 +1,6 @@
 # cc助手 · 原生 Swift 客户端与自托管订阅服务
 
-源码位置：`/Users/skyblue/Mine/cc-assistant`。
+下文路径均相对于仓库根目录，命令也在仓库根目录执行。
 
 macOS 2.0 客户端源码位于 `desktop/native/`，界面与本地业务全部由 Swift 实现。安装包不再包含 Node、React 或 WebView 页面。远程订阅继续由 Vultr 上的 Node 服务提供，入口为 `https://node.tangchen02.top`。原来的 Next.js 网站和 TypeScript 实现保留用于服务端及迁移对照。
 
