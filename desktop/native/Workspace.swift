@@ -1,110 +1,210 @@
 import Cocoa
 import SwiftUI
-import WebKit
+import Combine
+import Network
 
-private let workspaceAccent = NSColor(srgbRed: 8 / 255, green: 123 / 255, blue: 120 / 255, alpha: 1)
+/// Navigation state and the cross-model wiring the pages share.
+@MainActor final class WorkspaceModel: ObservableObject {
+    enum Route: String, CaseIterable, Identifiable {
+        case overview, lines, detection, requests, browser, accounts, guide
+        var id: String { rawValue }
+        var title: String { ["overview": "概览", "lines": "线路", "detection": "检测", "requests": "请求", "browser": "浏览器", "accounts": "号池", "guide": "指南"][rawValue]! }
+        var symbol: String { ["overview": "gauge.with.dots.needle.33percent", "lines": "arrow.triangle.branch", "detection": "checkmark.shield", "requests": "list.bullet.rectangle", "browser": "macwindow", "accounts": "person.2.crop.square.stack", "guide": "book.closed"][rawValue]! }
+    }
+    @Published var route: Route = .overview { didSet { subpage = nil; UserDefaults.standard.set(route.rawValue, forKey: "selectedMenu") } }
+    /// A guide step opened in place of the guide ("domain" / "email").
+    @Published var subpage: String?
+    let subscriptions: SubscriptionModel
+    let updates: AppUpdates
+    let accounts: AccountPoolModel
+    let egress = EgressCheckModel()
+    let registration = RegistrationModel()
+    let browsers: AccountBrowserLibrary
+    let guideNavigation = AccountGuideNavigation()
+    let clash = ClashObserver()
+    var openSettings: () -> Void = {}
+    private var monitor: Task<Void, Never>?
+    private var checkWatch: AnyCancellable?
+    private var checkLoop: Task<Void, Never>?
+    private var pathMonitor: NWPathMonitor?
+    private var routeWatch: AnyCancellable?
+    private var pendingRecheck: Task<Void, Never>?
+    private var proxySignature: String?
 
-private final class WorkspaceNavigationButton: NSButton {
-    var selected = false { didSet { needsDisplay = true } }
-    override func draw(_ dirtyRect: NSRect) {
-        let color = selected ? workspaceAccent : NSColor.secondaryLabelColor
-        if selected || isHighlighted {
-            (selected ? workspaceAccent.withAlphaComponent(0.11) : NSColor.labelColor.withAlphaComponent(0.04)).setFill()
-            NSBezierPath(roundedRect: bounds, xRadius: 8, yRadius: 8).fill()
+    /// Coalesces a burst of change signals into one silent check once the route has settled.
+    func scheduleRecheck(_ reason: String) {
+        pendingRecheck?.cancel()
+        pendingRecheck = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            // A check already in flight may predate the change, so wait for it rather than drop this one.
+            while self?.egress.busy == true, !Task.isCancelled { try? await Task.sleep(nanoseconds: 1_000_000_000) }
+            guard !Task.isCancelled, let self else { return }
+            TrafficLog.append("EGRESS", "recheck \(reason)")
+            self.egress.refreshSilently(hosts: EgressLocalDiagnostics.commonHosts)
         }
-        image?.withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 15, weight: .medium))?
-            .withSymbolConfiguration(NSImage.SymbolConfiguration(paletteColors: [color]))?
-            .draw(in: NSRect(x: 13, y: (bounds.height - 17) / 2, width: 17, height: 17))
-        let attributes: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 13, weight: selected ? .semibold : .medium), .foregroundColor: selected ? workspaceAccent : NSColor.labelColor]
-        let size = (title as NSString).size(withAttributes: attributes)
-        (title as NSString).draw(at: NSPoint(x: 41, y: (bounds.height - size.height) / 2), withAttributes: attributes)
+    }
+    init(subscriptions: SubscriptionModel, updates: AppUpdates, accounts: AccountPoolModel) {
+        self.subscriptions = subscriptions; self.updates = updates; self.accounts = accounts
+        browsers = AccountBrowserLibrary(defaults: registration)
+        subscriptions.markedIP = { [weak egress] in egress?.markedIP }
+        clash.watchedDomains = { [weak subscriptions] in
+            Array(Set(ClashObserver.claudeDomains + (subscriptions?.records.flatMap { $0.profile.rules.filter { $0.type != "DOMAIN-KEYWORD" }.map { $0.value.lowercased() } } ?? [])))
+        }
+        clash.start()
+        // The exit check refreshes in the background on a schedule and on network change; while it runs the Clash
+        // observer notes which nodes its probes used, then the single exit IP is mapped onto them.
+        checkWatch = egress.$running.combineLatest(egress.$backgroundRunning).map { $0 || $1 }.removeDuplicates().dropFirst().filter { $0 }.sink { [weak self] _ in
+            guard let self else { return }
+            Task { @MainActor in
+                let nodes = await self.clash.captureDuringCheck { [weak self] in self?.egress.busy ?? false }
+                if self.egress.exitIPs.count == 1, let ip = self.egress.exitIPs.first {
+                    self.clash.record(exit: ip, country: self.egress.successful.first?.country, nodes: nodes)
+                }
+                // The 16-domain route scan curls browser-facing hosts: only after a check the user started.
+                if self.egress.lastRunManual { await self.clash.checkCoverage() }
+            }
+        }
+        // Checks are change-driven: network path, system proxy settings, Clash route or Clash restart.
+        // An hourly silent check is only the fallback for an upstream IP that rotates behind the same node.
+        checkLoop = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 10_000_000_000)
+                guard let self else { return }
+                let signature = (CFNetworkCopySystemProxySettings()?.takeRetainedValue() as NSDictionary?)?.description
+                if signature != self.proxySignature { if self.proxySignature != nil { self.scheduleRecheck("系统代理变化") }; self.proxySignature = signature }
+                if Date().timeIntervalSince(self.egress.lastCheck ?? .distantFuture) >= 3600 { self.egress.refreshSilently(hosts: EgressLocalDiagnostics.commonHosts) }
+            }
+        }
+        routeWatch = clash.$claudeRoute.compactMap { $0 }.removeDuplicates().dropFirst()
+            .map { _ in "Clash 线路变化" }
+            .merge(with: clash.$controller.map { $0 != nil }.removeDuplicates().drop(while: { !$0 }).dropFirst().map { _ in "Clash 重启" })
+            .sink { [weak self] reason in self?.scheduleRecheck(reason) }
+        let path = NWPathMonitor()
+        var lastPath: String?
+        path.pathUpdateHandler = { [weak self] update in
+            // NWPathMonitor also fires for no-op updates; only a different interface/gateway set is a real change.
+            let signature = "\(update.status)|" + update.availableInterfaces.map(\.name).joined(separator: ",") + "|" + update.gateways.map { "\($0)" }.sorted().joined(separator: ",")
+            Task { @MainActor in
+                defer { lastPath = signature }
+                guard let previous = lastPath, previous != signature else { return }
+                self?.scheduleRecheck("网络变化")
+            }
+        }
+        path.start(queue: .global(qos: .utility)); pathMonitor = path
+        accounts.connectionFlow.prepareBrowser = { [weak self] email in
+            guard let self else { throw AccountConnectionError.noConnection }
+            try self.browsers.select(email)
+        }
+        accounts.connectionFlow.openBrowser = { [weak self] connect in self?.browsers.active.openBrowser("https://claude.ai/", accountLink: connect) }
+        accounts.readAccountBrowser = { [weak self] row, connection in
+            guard let self else { throw AccountConnectionError.noConnection }
+            return try await self.browsers.model(for: row.email, preferredProfileID: connection.profileID).readLinkedAccount()
+        }
+        accounts.accountSessionProxy = { [weak self] email in
+            guard let self else { throw AccountConnectionError.noConnection }
+            return try RegistrationModel.proxyArgument(self.browsers.model(for: email).settings.proxy)
+        }
+        accounts.connectionFlow.browserProfile = { [weak self] in self?.browsers.active.settings.browserID ?? UUID() }
+        accounts.connectionFlow.browserReader = { [weak self] in
+            guard let self else { throw AccountConnectionError.noConnection }
+            return try await self.registration.readLinkedAccount()
+        }
+        accounts.connectionFlow.sessionProxyForEmail = accounts.accountSessionProxy
+        accounts.connectionFlow.sessionProxy = { [weak self] in
+            guard let self else { throw AccountConnectionError.noConnection }
+            return try RegistrationModel.proxyArgument(self.browsers.active.settings.proxy)
+        }
+        monitor = Task { [weak self] in
+            while !Task.isCancelled {
+                self?.browsers.active.refreshBrowserState()
+                do { try await Task.sleep(nanoseconds: 2_000_000_000) } catch { return }
+            }
+        }
+        open(UserDefaults.standard.string(forKey: "selectedMenu") ?? "overview")
+    }
+    deinit { monitor?.cancel(); checkLoop?.cancel(); pathMonitor?.cancel() }
+
+    /// Accepts current routes and the keys older versions and guide links use.
+    func open(_ key: String) {
+        switch key {
+        case "settings": openSettings()
+        case "account-register":
+            route = .accounts
+            accounts.beginConnection(.register, email: (try? AccountPoolStore.email(registration.address)) ?? "")
+        case "domain", "email": route = .guide; subpage = key
+        case "lines", "enhancement", "chain": route = .lines
+        case "detection", "environment": route = .detection
+        case "guide", "registration", "payment", "usage":
+            if let section = AccountGuideSection.forRoute(key) { guideNavigation.section = section }
+            route = .guide
+        default: route = Route(rawValue: key) ?? .overview
+        }
     }
 }
 
-@MainActor final class WorkspaceView: NSView {
-    private let webView: WKWebView
-    private let content = NSView()
-    private let enhancement = WorkspaceNavigationButton()
-    private let detection = WorkspaceNavigationButton()
-    private let egressModel = EgressCheckModel()
-    private var egressView: NSHostingView<EgressDetectionView>?
-
-    init(webView: WKWebView) {
-        self.webView = webView
-        super.init(frame: .zero)
-        let sidebar = NSVisualEffectView()
-        sidebar.material = .sidebar; sidebar.blendingMode = .withinWindow; sidebar.state = .active
-        let stack = NSStackView()
-        stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 5
-        let brand = NSStackView()
-        brand.orientation = .horizontal; brand.alignment = .centerY; brand.spacing = 10
-        let badge = NSView()
-        badge.wantsLayer = true; badge.layer?.cornerRadius = 7; badge.layer?.backgroundColor = workspaceAccent.cgColor
-        let mark = NSImageView()
-        mark.image = NSImage(systemSymbolName: "arrow.triangle.branch", accessibilityDescription: nil)?.withSymbolConfiguration(NSImage.SymbolConfiguration(pointSize: 15, weight: .semibold, scale: .medium))
-        mark.contentTintColor = .white
-        badge.addSubview(mark); mark.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([badge.widthAnchor.constraint(equalToConstant: 28), badge.heightAnchor.constraint(equalToConstant: 28), mark.centerXAnchor.constraint(equalTo: badge.centerXAnchor), mark.centerYAnchor.constraint(equalTo: badge.centerYAnchor), mark.widthAnchor.constraint(equalToConstant: 17), mark.heightAnchor.constraint(equalToConstant: 17)])
-        let title = NSTextField(labelWithString: "cc助手")
-        title.font = .systemFont(ofSize: 17, weight: .semibold)
-        brand.addArrangedSubview(badge); brand.addArrangedSubview(title)
-        stack.addArrangedSubview(brand)
-        let spacer = NSView(); spacer.heightAnchor.constraint(equalToConstant: 24).isActive = true
-        stack.addArrangedSubview(spacer)
-        let section = NSTextField(labelWithString: "工具")
-        section.font = .systemFont(ofSize: 11, weight: .medium); section.textColor = .tertiaryLabelColor
-        stack.addArrangedSubview(section)
-        configure(enhancement, title: "clash增强", symbol: "arrow.triangle.branch", action: #selector(showEnhancement))
-        configure(detection, title: "节点检测", symbol: "network", action: #selector(showDetection))
-        stack.addArrangedSubview(enhancement); stack.addArrangedSubview(detection)
-        let footer = NSStackView()
-        footer.orientation = .vertical; footer.alignment = .leading; footer.spacing = 5
-        let local = NSTextField(labelWithString: "本机运行")
-        local.font = .systemFont(ofSize: 11); local.textColor = .secondaryLabelColor
-        let version = NSTextField(labelWithString: "v" + (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.1"))
-        version.font = .systemFont(ofSize: 10); version.textColor = .tertiaryLabelColor
-        footer.addArrangedSubview(local); footer.addArrangedSubview(version)
-        addSubview(sidebar); addSubview(content); sidebar.addSubview(stack); sidebar.addSubview(footer)
-        for view in [sidebar, content, stack, footer] { view.translatesAutoresizingMaskIntoConstraints = false }
-        NSLayoutConstraint.activate([
-            sidebar.leadingAnchor.constraint(equalTo: leadingAnchor), sidebar.topAnchor.constraint(equalTo: topAnchor), sidebar.bottomAnchor.constraint(equalTo: bottomAnchor), sidebar.widthAnchor.constraint(equalToConstant: 190),
-            stack.leadingAnchor.constraint(equalTo: sidebar.leadingAnchor, constant: 16), stack.trailingAnchor.constraint(equalTo: sidebar.trailingAnchor, constant: -16), stack.topAnchor.constraint(equalTo: sidebar.topAnchor, constant: 24),
-            footer.leadingAnchor.constraint(equalTo: sidebar.leadingAnchor, constant: 19), footer.bottomAnchor.constraint(equalTo: sidebar.bottomAnchor, constant: -20),
-            content.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor), content.trailingAnchor.constraint(equalTo: trailingAnchor), content.topAnchor.constraint(equalTo: topAnchor), content.bottomAnchor.constraint(equalTo: bottomAnchor),
-        ])
-        mount(webView)
-        if UserDefaults.standard.string(forKey: "selectedMenu") == "detection" { showDetection() } else { showEnhancement() }
-    }
-    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
-
-    private func configure(_ button: WorkspaceNavigationButton, title: String, symbol: String, action: Selector) {
-        button.title = title; button.target = self; button.action = action
-        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
-        button.setAccessibilityLabel(title)
-        button.bezelStyle = .regularSquare; button.isBordered = false
-        button.translatesAutoresizingMaskIntoConstraints = false
-        button.widthAnchor.constraint(equalToConstant: 158).isActive = true
-        button.heightAnchor.constraint(equalToConstant: 39).isActive = true
-    }
-
-    private func mount(_ view: NSView) {
-        view.translatesAutoresizingMaskIntoConstraints = false; content.addSubview(view)
-        NSLayoutConstraint.activate([view.leadingAnchor.constraint(equalTo: content.leadingAnchor), view.trailingAnchor.constraint(equalTo: content.trailingAnchor), view.topAnchor.constraint(equalTo: content.topAnchor), view.bottomAnchor.constraint(equalTo: content.bottomAnchor)])
-    }
-
-    private func selection(_ active: WorkspaceNavigationButton, other: WorkspaceNavigationButton) {
-        active.selected = true; other.selected = false
-    }
-    @objc private func showEnhancement() {
-        webView.isHidden = false; egressView?.isHidden = true
-        selection(enhancement, other: detection); UserDefaults.standard.set("enhancement", forKey: "selectedMenu")
-    }
-    @objc private func showDetection() {
-        if egressView == nil {
-            let hosted = NSHostingView(rootView: EgressDetectionView(model: egressModel))
-            egressView = hosted; mount(hosted)
+struct RootView: View {
+    @ObservedObject var model: WorkspaceModel
+    var body: some View {
+        NavigationSplitView {
+            List(selection: Binding(get: { model.route }, set: { if let route = $0 { model.route = route } })) {
+                row(.overview)
+                Section("网络") { row(.lines); row(.detection); row(.requests); row(.browser) }
+                Section("账号") { row(.accounts); row(.guide) }
+            }
+            .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 260)
+            .safeAreaInset(edge: .bottom) {
+                VStack(alignment: .leading, spacing: 8) {
+                    UpdateSidebarView(updates: model.updates)
+                    HStack {
+                        Text("v" + (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "")).font(.caption).foregroundStyle(.tertiary)
+                        Spacer()
+                        Button { model.openSettings() } label: { Image(systemName: "gearshape") }
+                            .buttonStyle(.borderless).help("设置… (⌘,)").accessibilityLabel("设置")
+                    }
+                }.padding(12)
+            }
+        } detail: {
+            detail.frame(minWidth: 640, minHeight: 520)
         }
-        webView.isHidden = true; egressView?.isHidden = false
-        selection(detection, other: enhancement); UserDefaults.standard.set("detection", forKey: "selectedMenu")
+    }
+
+    @ViewBuilder private func row(_ route: WorkspaceModel.Route) -> some View {
+        if route == .browser { BrowserRow(library: model.browsers).tag(route) }
+        else { Label(route.title, systemImage: route.symbol).tag(route) }
+    }
+
+    @ViewBuilder private var detail: some View {
+        switch model.route {
+        case .overview: OverviewView(model: model, subscriptions: model.subscriptions, egress: model.egress, browsers: model.browsers, accounts: model.accounts)
+        case .lines: SubscriptionView(model: model.subscriptions, server: model.subscriptions.server)
+        case .detection: EgressDetectionView(model: model.egress, onEnhancement: { model.route = .lines }, clash: model.clash)
+        case .requests:
+            ConnectionsView(subscriptions: model.subscriptions, clash: model.clash, egress: model.egress)
+                .padding(20).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .background(Color(nsColor: .windowBackgroundColor)).navigationTitle("请求")
+        case .browser: AccountBrowserPage(library: model.browsers, accounts: model.accounts)
+        case .accounts: AccountPoolView(model: model.accounts, browser: model.registration, browserLibrary: model.browsers, onBrowserSettings: { model.route = .browser })
+        case .guide:
+            if let section = model.subpage {
+                RegistrationPage(model: model.registration, section: section)
+                    .toolbar { ToolbarItem(placement: .navigation) { Button { model.subpage = nil } label: { Label("指南", systemImage: "chevron.backward") }.help("返回指南") } }
+            } else {
+                AccountGuideView(browser: model.registration, navigation: model.guideNavigation, onNavigate: model.open)
+            }
+        }
+    }
+}
+
+/// Sidebar row that shows the managed browser's state as a badge.
+private struct BrowserRow: View {
+    @ObservedObject var library: AccountBrowserLibrary
+    var body: some View { BrowserRowLabel(model: library.active) }
+}
+private struct BrowserRowLabel: View {
+    @ObservedObject var model: RegistrationModel
+    var body: some View {
+        Label("浏览器", systemImage: "macwindow")
+            .badge(model.browserRuntime.phase == .stopped ? nil : Text(model.browserRuntime.phase.rawValue))
+            .help("独立浏览器：" + model.browserRuntime.phase.rawValue)
     }
 }

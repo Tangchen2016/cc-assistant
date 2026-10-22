@@ -1,7 +1,6 @@
 import Foundation
 import CryptoKit
 import Darwin
-import WebKit
 
 enum EgressProbeKind: String, CaseIterable, Identifiable, Codable {
     case terminal, claude, proxy, ipv4, ipv6, browser
@@ -13,7 +12,7 @@ enum EgressProbeKind: String, CaseIterable, Identifiable, Codable {
         case .proxy: return "自定义代理"
         case .ipv4: return "IPv4 · 不指定代理"
         case .ipv6: return "IPv6 · 不指定代理"
-        case .browser: return "独立浏览器 · 无登录态"
+        case .browser: return "纯净浏览器"
         }
     }
     var detail: String {
@@ -23,7 +22,7 @@ enum EgressProbeKind: String, CaseIterable, Identifiable, Codable {
         case .proxy: return "仅在自定义代理开关开启时，使用指定地址请求"
         case .ipv4: return "忽略显式代理；仍可能由 TUN 接管"
         case .ipv6: return "忽略显式代理；用于发现 IPv6 旁路"
-        case .browser: return "临时 WebKit 会话；不是已有 Chrome / Safari 会话"
+        case .browser: return "使用设置中的浏览器引擎和代理设置；临时空白资料目录，不携带登录态"
         }
     }
     var symbol: String {
@@ -33,7 +32,7 @@ enum EgressProbeKind: String, CaseIterable, Identifiable, Codable {
         case .proxy: return "arrow.triangle.branch"
         case .ipv4: return "4.circle"
         case .ipv6: return "6.circle"
-        case .browser: return "safari"
+        case .browser: return "globe"
         }
     }
 }
@@ -47,7 +46,9 @@ struct EgressProbeResult: Identifiable {
     var tls: String?
     var milliseconds: Int = 0
     var error: String?
+    var skippedReason: String?
     var finishedAt = Date()
+    var browserName: String?
     var cookiesAtStart: Int?
     var timedOut = false
     var attempts = 1
@@ -71,17 +72,20 @@ private final class EgressCapturedBytes: @unchecked Sendable {
     let lock = NSLock()
     var data = Data()
     var oversized = false
-    func append(_ next: Data, process: Process) {
+    func append(_ next: Data, process: Process, outputReady: ((String) -> Bool)? = nil) {
         lock.lock()
         if data.count + next.count > 4_000_000 { oversized = true } else { data.append(next) }
-        let stop = oversized
+        let stop = oversized || (outputReady?(String(data: data, encoding: .utf8) ?? "") ?? false)
         lock.unlock()
         if stop && process.isRunning { process.terminate() }
     }
 }
 
 enum EgressLocalDiagnostics {
-    static let hosts = ["api.anthropic.com", "claude.ai", "platform.claude.com"]
+    static let hosts = ["api.anthropic.com", "claude.ai", "claude.com", "platform.claude.com"]
+    /// The only host automatic checks touch: an API host that already sees programmatic clients.
+    /// Browser-facing hosts (claude.ai etc.) are only probed by curl on a manual check.
+    static let commonHosts = ["api.anthropic.com"]
     static let proxyKeys = ["https_proxy", "HTTPS_PROXY", "http_proxy", "HTTP_PROXY", "all_proxy", "ALL_PROXY", "no_proxy", "NO_PROXY"]
     static func environment() -> [String: String] {
         let allowed = Set(proxyKeys + ["HOME", "PATH", "LANG", "LC_ALL", "CURL_HOME", "XDG_CONFIG_HOME"])
@@ -90,7 +94,7 @@ enum EgressLocalDiagnostics {
         env["PATH"] = "/usr/bin:/bin:/usr/sbin:/sbin"
         return env
     }
-    static func run(_ path: String, _ args: [String], env: [String: String]? = nil, timeout: Double = 12, input: String? = nil) -> EgressProcessOutput {
+    static func run(_ path: String, _ args: [String], env: [String: String]? = nil, timeout: Double = 12, input: String? = nil, outputReady: ((String) -> Bool)? = nil) -> EgressProcessOutput {
         let process = Process(), pipe = Pipe(), captured = EgressCapturedBytes(), exited = DispatchSemaphore(value: 0), drained = DispatchSemaphore(value: 0)
         let inputPipe = input == nil ? nil : Pipe()
         process.executableURL = URL(fileURLWithPath: path)
@@ -100,7 +104,7 @@ enum EgressLocalDiagnostics {
         process.standardError = FileHandle.nullDevice
         process.standardInput = inputPipe ?? FileHandle.nullDevice
         process.terminationHandler = { _ in exited.signal() }
-        do { try process.run() } catch { return EgressProcessOutput(code: -1, text: "", timedOut: false, oversized: false) }
+        do { try process.run() } catch { return EgressProcessOutput(code: -1, text: error.localizedDescription, timedOut: false, oversized: false) }
         if let input, let inputPipe {
             try? inputPipe.fileHandleForWriting.write(contentsOf: Data(input.utf8))
             try? inputPipe.fileHandleForWriting.close()
@@ -110,7 +114,7 @@ enum EgressLocalDiagnostics {
             while true {
                 let next = pipe.fileHandleForReading.availableData
                 if next.isEmpty { break }
-                captured.append(next, process: process)
+                captured.append(next, process: process, outputReady: outputReady)
             }
             drained.signal()
         }
@@ -198,7 +202,7 @@ enum EgressLocalDiagnostics {
                 args = ["-q"]
                 let configured = claudeNetworkEnvironment()
                 env.merge(configured) { _, new in new }
-                guard let selected = ["https_proxy", "HTTPS_PROXY", "http_proxy", "HTTP_PROXY"].compactMap({ env[$0] }).first(where: { !$0.isEmpty }) else { throw EgressDiagnosticError.message("Claude 全局配置和 App 启动环境中没有显式代理；本项仅模拟全局配置，不代表运行中的会话") }
+                guard let selected = ["https_proxy", "HTTPS_PROXY", "http_proxy", "HTTP_PROXY"].compactMap({ env[$0] }).first(where: { !$0.isEmpty }) else { return EgressProbeResult(kind: kind, skippedReason: "未配置显式代理；已跳过全局配置模拟。TUN 接管不依赖此配置，本项不代表运行中的 Claude 会话。") }
                 guard ["http", "https"].contains(URLComponents(string: selected)?.scheme ?? "") else { throw EgressDiagnosticError.message("Claude Code 需要 HTTP / HTTPS 代理；不能用 SOCKS 检测结果替代其实际行为") }
                 args += ["--config", "-"]
                 proxyInput = proxyConfiguration(selected)
@@ -207,7 +211,7 @@ enum EgressLocalDiagnostics {
                 proxyInput = proxyConfiguration(try validateProxyAddress(proxy.trimmingCharacters(in: .whitespacesAndNewlines)))
             case .ipv4: args = ["-q", "-4", "--noproxy", "*"]
             case .ipv6: args = ["-q", "-6", "--noproxy", "*"]
-            case .browser: throw EgressDiagnosticError.message("浏览器检测需使用独立 WebKit 会话")
+            case .browser: throw EgressDiagnosticError.message("浏览器检测需使用纯净浏览器引擎")
             }
             args += ["--silent", "--show-error", "--connect-timeout", "10", "--max-time", "20", "--proto", "=https", "--max-redirs", "0", "--no-insecure", "--request", "GET", "--header", "Cookie:", "--header", "Authorization:", "--write-out", "\nEGRESS_HTTP_STATUS:%{http_code}", url.absoluteString]
             let output = run("/usr/bin/curl", args, env: env, timeout: 22, input: proxyInput)
@@ -223,93 +227,4 @@ enum EgressLocalDiagnostics {
         } catch { return EgressProbeResult(kind: kind, milliseconds: Int(Date().timeIntervalSince(started) * 1000), error: error.localizedDescription) }
     }
 
-}
-
-@MainActor final class EgressBrowserProbe: NSObject, WKNavigationDelegate {
-    private var view: WKWebView?
-    private var continuation: CheckedContinuation<EgressProbeResult, Never>?
-    private var timer: Task<Void, Never>?
-    private var started = Date()
-    private var target: URL?
-    private var startCookies = 0
-    private var status = 0
-    private var navigationIssued = false
-    nonisolated static func permits(_ url: URL, target: URL) -> Bool {
-        url.scheme == target.scheme && url.host == target.host && url.port == target.port && url.path == "/cdn-cgi/trace" && url.query == nil && url.fragment == nil && url.user == nil && url.password == nil
-    }
-    func check(host: String, fixture: URL? = nil) async -> EgressProbeResult {
-        navigationIssued = false
-        status = 0
-        startCookies = 0
-        do { target = try fixture ?? EgressLocalDiagnostics.traceURL(host) } catch { return EgressProbeResult(kind: .browser, error: error.localizedDescription) }
-        guard let target else { return EgressProbeResult(kind: .browser, error: "没有检测目标") }
-        let store = WKWebsiteDataStore.nonPersistent()
-        guard !store.isPersistent else { return EgressProbeResult(kind: .browser, error: "无法创建临时浏览器，检测已拒绝") }
-        let cookies = await withCheckedContinuation { continuation in store.httpCookieStore.getAllCookies { continuation.resume(returning: $0) } }
-        startCookies = cookies.count
-        guard cookies.isEmpty else { return EgressProbeResult(kind: .browser, error: "临时会话含 Cookie，检测已拒绝", cookiesAtStart: cookies.count) }
-        let config = WKWebViewConfiguration()
-        config.websiteDataStore = store
-        config.defaultWebpagePreferences.allowsContentJavaScript = false
-        view = WKWebView(frame: .zero, configuration: config)
-        view?.navigationDelegate = self
-        started = Date()
-        return await withCheckedContinuation { continuation in
-            self.continuation = continuation
-            timer = Task { [weak self] in
-                try? await Task.sleep(nanoseconds: 22_000_000_000)
-                guard !Task.isCancelled else { return }
-                self?.finish(EgressProbeResult(kind: .browser, error: "独立浏览器连接超时，未验证出口", timedOut: true))
-            }
-            var request = URLRequest(url: target, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 20)
-            request.setValue("", forHTTPHeaderField: "Cookie")
-            request.setValue("", forHTTPHeaderField: "Authorization")
-            view?.load(request)
-        }
-    }
-    private func finish(_ result: EgressProbeResult) {
-        guard let continuation else { return }
-        self.continuation = nil
-        var result = result
-        result.cookiesAtStart = startCookies
-        result.milliseconds = Int(Date().timeIntervalSince(started) * 1000)
-        timer?.cancel(); timer = nil
-        view?.stopLoading(); view?.navigationDelegate = nil; view = nil
-        continuation.resume(returning: result)
-    }
-    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-        guard webView === view else { decisionHandler(.cancel); return }
-        guard !navigationIssued, let url = navigationAction.request.url, let target, Self.permits(url, target: target) else {
-            decisionHandler(.cancel); finish(EgressProbeResult(kind: .browser, error: "检测遇到重定向或非白名单地址，已停止")); return
-        }
-        navigationIssued = true
-        decisionHandler(.allow)
-    }
-    func webView(_ webView: WKWebView, didReceiveServerRedirectForProvisionalNavigation navigation: WKNavigation!) {
-        guard webView === view else { return }
-        finish(EgressProbeResult(kind: .browser, error: "检测遇到服务器重定向，已停止"))
-    }
-    func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse, decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
-        guard webView === view else { decisionHandler(.cancel); return }
-        guard let response = navigationResponse.response as? HTTPURLResponse, let url = response.url, let target, Self.permits(url, target: target), response.expectedContentLength <= 16_384 else {
-            decisionHandler(.cancel); finish(EgressProbeResult(kind: .browser, error: "浏览器响应不符合检测限制")); return
-        }
-        status = response.statusCode
-        decisionHandler(.allow)
-    }
-    func webView(_ webView: WKWebView, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
-        guard webView === view else { completionHandler(.cancelAuthenticationChallenge, nil); return }
-        if challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust { completionHandler(.performDefaultHandling, nil) }
-        else { completionHandler(.cancelAuthenticationChallenge, nil); finish(EgressProbeResult(kind: .browser, error: "目标要求身份认证，已拒绝发送凭证")) }
-    }
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        guard webView === view else { return }
-        webView.evaluateJavaScript("document.body.innerText") { [weak self] value, error in
-            guard let self, let target = self.target else { return }
-            if error != nil || !(value is String) { self.finish(EgressProbeResult(kind: .browser, error: "无法读取独立浏览器检测响应")); return }
-            self.finish(EgressLocalDiagnostics.parse(value as! String, host: target.host ?? "", kind: .browser, milliseconds: 0, status: self.status))
-        }
-    }
-    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { guard webView === view else { return }; finish(EgressProbeResult(kind: .browser, error: "浏览器连接失败（\((error as NSError).code)）", timedOut: (error as NSError).code == NSURLErrorTimedOut)) }
-    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { guard webView === view else { return }; finish(EgressProbeResult(kind: .browser, error: "浏览器连接失败（\((error as NSError).code)）；请检查系统代理", timedOut: (error as NSError).code == NSURLErrorTimedOut)) }
 }
