@@ -50,6 +50,7 @@ test("each GET fetches live source and applies the current profile, headers disc
   };
   const first = await renderRemoteSubscription(cache, { fetchLive: live });
   assert.equal(first.headers.get("X-Subscription-Source"), "live");
+  assert.equal(Buffer.from(first.headers.get("Profile-Title")!.slice(7), "base64").toString("utf8"), cache.profile.name);
   assert.equal(first.headers.get("X-Source-Updated-At"), "2026-01-02T00:00:01.000Z");
   assert.equal(first.headers.get("Subscription-Userinfo"), "upload=0;download=2;total=100");
   assert.match(first.headers.get("Cache-Control") ?? "", /no-store/);

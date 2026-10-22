@@ -1,39 +1,67 @@
 "use client";
 
 import { Check, Gauge, GitBranch, LoaderCircle, Plus, Search, Server, Trash2, X } from "lucide-react";
+import { AUTO_CHAIN_ENTRY, parseFixedExitLink } from "../lib/fixed-exit";
 import { useState } from "react";
+import StaticProxyGuide from "./StaticProxyGuide";
+import FixedExitInput from "./FixedExitInput";
 import type { Group, NodeSummary } from "../lib/types";
 import { isUSNode, prioritizeNodes } from "../lib/node-region";
 import type { LatencyState, NodeLatency } from "./useNodeLatency";
 
-type Props = { groups: Group[]; nodes: NodeSummary[]; activeGroup: number; onSelect: (index: number) => void; onAdd: () => void; onRemove: (index: number) => void; onUpdate: (index: number, group: Group) => void; disabled: boolean; latency: LatencyState; desktop?: boolean };
+type Props = { groups: Group[]; nodes: NodeSummary[]; sourceGroups: string[]; activeGroup: number; onSelect: (index: number) => void; onAdd: () => void; onRemove: (index: number) => void; onUpdate: (index: number, group: Group) => void; disabled: boolean; latency: LatencyState; desktop?: boolean; onCopyFixedExit: (value: string) => void; fixedExitCopied: boolean };
 function latencyLabel(result?: NodeLatency) {
   if (!result) return "未检测";
   if (result.status === "ok" && Number.isFinite(result.latencyMs)) return `${Math.max(1, Math.round(result.latencyMs!))} ms`;
   return { timeout: "超时", blocked: "已阻止", unavailable: "不可用", ok: "不可用" }[result.status];
 }
-export default function GroupEditor({ groups, nodes, activeGroup, onSelect, onAdd, onRemove, onUpdate, disabled, latency, desktop = false }: Props) {
+export default function GroupEditor({ groups, nodes, sourceGroups, activeGroup, onSelect, onAdd, onRemove, onUpdate, disabled, latency, desktop = false, onCopyFixedExit, fixedExitCopied }: Props) {
   const [query, setQuery] = useState("");
   const [onlyUS, setOnlyUS] = useState(false);
   const current = groups[activeGroup];
+  const fixedMode = current?.fixedExit !== undefined;
+  let fixedSummary = "";
+  let fixedError = "";
+  if (current?.fixedExit) {
+    try { const proxy = parseFixedExitLink(current.fixedExit); fixedSummary = `VLESS · WebSocket + TLS · ${proxy.server}:${proxy.port}`; }
+    catch { fixedError = "分享链接无效，仅支持 VLESS + WebSocket + TLS。"; }
+  }
   const chainEntry = current?.chain?.entry;
-  const measurable = !desktop || !current?.chain || (!!chainEntry && nodes.some((node) => node.name === chainEntry) && !current.nodes.includes(chainEntry));
+  const measurable = !fixedMode && (!desktop || !current?.chain || (!!chainEntry && nodes.some((node) => node.name === chainEntry) && !current.nodes.includes(chainEntry)));
   const entryNodes = prioritizeNodes(nodes).filter((node) => !current?.nodes.includes(node.name));
   const usCount = nodes.filter((node) => isUSNode(node.name)).length;
   const visible = prioritizeNodes(nodes).filter((node) => (!onlyUS || isUSNode(node.name)) && node.name.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
   function selection(names: string[]) { onUpdate(activeGroup, { ...current, nodes: names }); }
   function toggleChain(enabled: boolean) {
     const next = { ...current };
-    if (enabled) next.chain = { entry: "" }; else delete next.chain;
+    if (enabled) { next.fixedExit ??= ""; next.chain = { entry: AUTO_CHAIN_ENTRY }; } else delete next.chain;
     onUpdate(activeGroup, next);
   }
   return <section className="panel groups-panel" aria-labelledby="groups-title">
     <div className="section-head"><div className="step-heading"><span className="step-number">02</span><h2 id="groups-title">独立代理组</h2></div><button className="button text-button" onClick={onAdd} disabled={disabled}><Plus size={15} />添加组</button></div>
-    <p className="section-description">选择具体节点，独立于原订阅的全局节点选择。</p>
-    <div className="group-tabs" role="tablist" aria-label="代理组">{groups.map((group, index) => <button key={index} id={`group-tab-${index}`} role="tab" aria-selected={activeGroup === index} aria-controls="group-panel" className={`group-tab ${activeGroup === index ? "active" : ""}`} onClick={() => onSelect(index)}><GitBranch size={14} /><span>{group.name || "未命名组"}</span><small>{group.nodes.length}</small></button>)}</div>
+    <p className="section-description">选择固定出口；链式代理可跟随原订阅代理组切换前置节点。</p>
+    <div className="group-tabs" role="tablist" aria-label="代理组">{groups.map((group, index) => <button key={index} id={`group-tab-${index}`} role="tab" aria-selected={activeGroup === index} aria-controls="group-panel" className={`group-tab ${activeGroup === index ? "active" : ""}`} onClick={() => onSelect(index)}><GitBranch size={14} /><span>{group.name || "未命名组"}</span><small>{group.fixedExit ? 1 : group.nodes.length}</small></button>)}</div>
     {current ? <div id="group-panel" role="tabpanel" aria-labelledby={`group-tab-${activeGroup}`}>
       <div className="group-title-form"><label className="field"><span className="input-label">代理组名称</span><input value={current.name} onChange={(event) => onUpdate(activeGroup, { ...current, name: event.target.value })} disabled={disabled} maxLength={80} /></label><button className="icon-button danger" aria-label={`删除代理组 ${current.name}`} onClick={() => onRemove(activeGroup)} disabled={disabled}><Trash2 size={17} /></button></div>
-      {<div className="chain-settings"><label className="chain-toggle"><input type="checkbox" checked={!!current.chain} disabled={disabled} onChange={(event) => toggleChain(event.target.checked)} />启用链式代理</label>{current.chain && <><label className="field"><span className="input-label">前置节点</span><select aria-label="前置节点" value={current.chain.entry} onChange={(event) => onUpdate(activeGroup, { ...current, chain: { entry: event.target.value } })} disabled={disabled || !nodes.length}><option value="">请选择前置节点</option>{current.chain.entry && !entryNodes.some((node) => node.name === current.chain?.entry) && <option value={current.chain.entry} disabled>不可用：{current.chain.entry}</option>}{entryNodes.map((node) => <option key={node.name} value={node.name}>{node.name}</option>)}</select></label><p className="helper">本机 → 前置节点 → 出口节点 → 目标网站。目标网站看到的出口 IP 由最后的出口节点决定。</p>{!measurable && <p className="helper">先选择可用且不同于出口的前置节点，再检测链式路径。</p>}</>}</div>}
+      {<div className="chain-settings">
+        <label className="chain-toggle"><input type="checkbox" checked={!!current.chain} disabled={disabled} onChange={(event) => toggleChain(event.target.checked)} />启用链式代理</label>
+        {current.chain && <>
+          <label className="field"><span className="input-label">出口来源</span><select aria-label="出口来源" value={fixedMode ? "custom" : "subscription"} disabled={disabled} onChange={(event) => { const next = { ...current }; if (event.target.value === "custom") { next.fixedExit = ""; next.chain = { entry: AUTO_CHAIN_ENTRY }; } else { delete next.fixedExit; next.chain = { entry: "" }; } onUpdate(activeGroup, next); }}><option value="custom">自建固定出口（分享链接）</option><option value="subscription">源订阅节点</option></select></label>
+          {fixedMode ? <label className="field"><span className="input-label">前置代理组 · 跟随 Clash 中的选择</span><select aria-label="前置代理组" value={current.chain.entry} onChange={(event) => onUpdate(activeGroup, { ...current, chain: { entry: event.target.value } })} disabled={disabled}><option value={AUTO_CHAIN_ENTRY}>自动 · 源订阅全部节点测速（推荐）</option><option value="">或跟随原订阅代理组…</option>{current.chain.entry && current.chain.entry !== AUTO_CHAIN_ENTRY && !sourceGroups.includes(current.chain.entry) && <option value={current.chain.entry} disabled>需重新选择：{current.chain.entry}</option>}{sourceGroups.map((name) => <option key={name} value={name}>{name}</option>)}</select></label> : <label className="field"><span className="input-label">前置节点</span><select aria-label="前置节点" value={current.chain.entry} onChange={(event) => onUpdate(activeGroup, { ...current, chain: { entry: event.target.value } })} disabled={disabled || !nodes.length}><option value="">请选择前置节点</option>{current.chain.entry && !entryNodes.some((node) => node.name === current.chain?.entry) && <option value={current.chain.entry} disabled>不可用：{current.chain.entry}</option>}{entryNodes.map((node) => <option key={node.name} value={node.name}>{node.name}</option>)}</select></label>}
+          <p className="helper">{fixedMode ? current.chain.entry === AUTO_CHAIN_ENTRY ? "命中右侧域名规则 → 源订阅中延迟最低的节点 → 固定出口 → 目标网站。与 Clash 里手动选的节点无关，换机场订阅也无需重选。" : "命中右侧域名规则 → 前置组当前选择的节点 → 固定出口 → 目标网站。切换机场节点不会改变最终出口；固定出口不可用时不会绕过它。" : "本机 → 前置节点 → 出口节点 → 目标网站。"}</p>
+        </>}
+      </div>}
+      {fixedMode ? <div className="chain-settings">
+        <StaticProxyGuide />
+        <p className="helper">指向固定出口的域名规则会自动拒绝 UDP，避免 QUIC 跳过固定出口；浏览器通常会回退到 TCP。</p>
+        <FixedExitInput key={activeGroup} value={current.fixedExit ?? ""} disabled={disabled} copied={fixedExitCopied} onChange={value => onUpdate(activeGroup, { ...current, fixedExit: value })} onCopy={() => onCopyFixedExit(current.fixedExit ?? "")} />
+        {fixedSummary && <p className="helper" role="status">{fixedSummary}</p>}
+        {fixedError && <p className="latency-error" role="alert">{fixedError}</p>}
+        <p className="helper">链接包含节点凭证，请勿公开。更换源订阅会保留该出口，并要求重新确认前置代理组。</p>
+        {!current.chain && <p className="helper">当前为直连固定出口；启用链式代理可添加机场前置。</p>}
+        <p className="helper">此处暂不提供固定出口链路测速；生成后请在 Clash 中验证完整链路。</p>
+        {desktop && <p className="helper">固定出口目前请使用本机订阅；远程同步暂不支持，已有远程地址不会包含此次配置。</p>}
+      </div> : <>
       <div className="node-picker-title"><span className="input-label">{current.chain ? "选择出口节点" : "选择节点"}</span><span>{current.nodes.length} 个已选</span></div>
       {current.nodes.length > 0 && <div className="selected-nodes">{current.nodes.map((name) => <button key={name} className={`node-chip ${nodes.length > 0 && !nodes.some((node) => node.name === name) ? "missing" : ""}`} aria-label={`移除所选节点 ${name}`} onClick={() => selection(current.nodes.filter((item) => item !== name))} disabled={disabled}><span>{name}</span><X size={12} /></button>)}</div>}
       <div className="node-region-filter"><span>美国节点优先 · {usCount} 个</span><label><input type="checkbox" checked={onlyUS} onChange={(event) => setOnlyUS(event.target.checked)} disabled={disabled || !nodes.length} />仅看美国</label></div>
@@ -47,6 +75,7 @@ export default function GroupEditor({ groups, nodes, activeGroup, onSelect, onAd
       })}</div>
       <p className="helper node-helper">按节点名称识别，实际出口以 IP 检测为准。选择 1 个节点固定线路；选择多个后可在该组内手动切换。</p>
       <p className="helper">{desktop ? "使用独立测试引擎，经每个节点请求 https://www.gstatic.com/generate_204，不携带登录 Cookie。结果衡量此次 HTTPS 请求延迟，不代表带宽或账号可用性。" : "延迟仅测服务器到节点的 TCP 连接，不验证链式代理；不代表本机或代理请求延迟。"}</p>
+      </>}
     </div> : <div className="empty-state"><GitBranch size={28} /><p>添加一个代理组，再选择固定节点。</p><button className="button secondary" onClick={onAdd}><Plus size={15} />添加代理组</button></div>}
   </section>;
 }

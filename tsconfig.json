@@ -43,6 +43,9 @@
   ],
   "exclude": [
     "node_modules",
-    "examples"
+    "examples",
+    "work",
+    "outputs",
+    "dist"
   ]
 }

@@ -17,7 +17,7 @@ export async function createRemoteCache(cache: RemoteCache) {
     profileJson: JSON.stringify(cache.profile), sourceYaml: cache.sourceYaml, sourceFetchedAt: cache.sourceFetchedAt,
     userInfo: cache.userInfo ?? null, createdAt: now, updatedAt: now,
   });
-  return { id, manageKey, downloadKey, subscriptionPath: remoteSubscriptionPath(cache.profile.name, id, downloadKey), updatedAt: now };
+  return { id, manageKey, downloadKey, subscriptionPath: cache.profile.client === "shadowrocket" ? `/remote-sub/${id}/${downloadKey}/claude-nodes.txt` : remoteSubscriptionPath(cache.profile.name, id, downloadKey), updatedAt: now };
 }
 
 export async function findRemoteCache(id: string, key: string, download = false) {

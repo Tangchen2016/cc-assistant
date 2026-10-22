@@ -7,12 +7,14 @@ import { UserError } from "../../app/lib/errors.ts";
 import { curlFetch, localDns, systemProxy } from "./local-source.ts";
 import type { LocalStore } from "./local-store.ts";
 
-export const REMOTE_ORIGIN = "https://cc-assistant-api.tangchen19942016.workers.dev";
+export const REMOTE_ORIGIN = "https://node.tangchen02.top";
+export const LEGACY_REMOTE_ORIGIN = "https://cc-assistant-api.tangchen19942016.workers.dev";
 export const REMOTE_ERROR = "远程同步失败，云端保留上次成功内容；请检查网络后重试。";
+export const FIXED_EXIT_REMOTE_ERROR = "当前远程服务尚未验证支持固定出口，请使用本地订阅；已有远程订阅仍保留旧配置。";
 const quote = (value: string) => `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\r/g, "\\r").replace(/\n/g, "\\n")}"`;
 type Method = "POST" | "PUT" | "DELETE";
-export type RemoteTransport = (method: Method, path: string, data: unknown, key: string | undefined, signal: AbortSignal) => Promise<Record<string, unknown>>;
-export type RemoteOptions = { transport?: RemoteTransport; fetchSource?: (url: string, signal: AbortSignal) => ReturnType<typeof fetchSource>; intervalMs?: number };
+export type RemoteTransport = (method: Method, path: string, data: unknown, key: string | undefined, signal: AbortSignal, origin?: string) => Promise<Record<string, unknown>>;
+export type RemoteOptions = { transport?: RemoteTransport; fetchSource?: (url: string, signal: AbortSignal) => ReturnType<typeof fetchSource>; intervalMs?: number; fixedExitVerified?: boolean };
 
 export function validateRemote(value: unknown): RemoteSubscription {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new UserError("远程订阅资料无效。", 502);
@@ -20,12 +22,13 @@ export function validateRemote(value: unknown): RemoteSubscription {
   if (!/^[a-f0-9]{32}$/.test(remote.id) || !/^[a-f0-9]{64}$/.test(remote.manageKey) || !/^[a-f0-9]{64}$/.test(remote.downloadKey) || remote.manageKey === remote.downloadKey || !Number.isFinite(remote.updatedAt) || remote.updatedAt <= 0) throw new UserError("远程订阅资料无效。", 502);
   let url: URL;
   try { url = new URL(remote.subscriptionUrl); } catch { throw new UserError("远程订阅地址无效。", 502); }
-  if (url.origin !== REMOTE_ORIGIN || url.username || url.password || url.search || url.hash || !new RegExp(`^/remote-sub/${remote.id}/${remote.downloadKey}(?:/[^/]+)?$`).test(url.pathname)) throw new UserError("远程订阅地址不属于指定托管服务。", 502);
+  if (![REMOTE_ORIGIN, LEGACY_REMOTE_ORIGIN].includes(url.origin) || url.username || url.password || url.search || url.hash || !new RegExp(`^/remote-sub/${remote.id}/${remote.downloadKey}(?:/[^/]+)?$`).test(url.pathname)) throw new UserError("远程订阅地址不属于指定托管服务。", 502);
   return { id: remote.id, manageKey: remote.manageKey, downloadKey: remote.downloadKey, subscriptionUrl: url.href, updatedAt: remote.updatedAt, ...(remote.lastError ? { lastError: REMOTE_ERROR } : {}) };
 }
 
 // The fixed destination, request body and authorization enter curl through stdin.
-export const remoteCurl: RemoteTransport = async (method, path, data, key, signal) => {
+export const remoteCurl: RemoteTransport = async (method, path, data, key, signal, origin = REMOTE_ORIGIN) => {
+  if (![REMOTE_ORIGIN, LEGACY_REMOTE_ORIGIN].includes(origin)) throw new UserError("远程托管服务地址无效。", 400);
   if (!/^\/api\/remote-subscriptions(?:\/[a-f0-9]{32})?$/.test(path)) throw new UserError("远程操作地址无效。", 400);
   if (key !== undefined && !/^[a-f0-9]{64}$/.test(key)) throw new UserError("远程管理密钥无效。", 400);
   signal.throwIfAborted();
@@ -34,7 +37,7 @@ export const remoteCurl: RemoteTransport = async (method, path, data, key, signa
   const proxy = await systemProxy("https:");
   signal.throwIfAborted();
   const config = [
-    `url = ${quote(`${REMOTE_ORIGIN}${path}`)}`, `request = ${quote(method)}`, 'proto = "=https"', 'proto-redir = "=https"',
+    `url = ${quote(`${origin}${path}`)}`, `request = ${quote(method)}`, 'proto = "=https"', 'proto-redir = "=https"',
     "silent", "compressed", "max-redirs = 0", "connect-timeout = 8", "max-time = 20", `proxy = ${quote(proxy)}`,
     `noproxy = ${quote(process.env.no_proxy ?? process.env.NO_PROXY ?? "")}`, 'header = "Cookie:"', 'header = "Content-Type: application/json"',
     ...(key ? [`header = ${quote(`Authorization: Bearer ${key}`)}`] : []), ...(json ? [`data-binary = ${quote(json)}`] : []),
@@ -89,6 +92,11 @@ export class RemotePublisher {
     return this.serialize(id, async () => {
       const record = await this.store.find(id, key);
       if (!explicit && !record.remote) return undefined;
+      // Only the verified self-hosted service supports fixed-exit generation.
+      if (record.profile.groups.some((group) => group.fixedExit !== undefined) && (this.options.fixedExitVerified === false || record.remote && new URL(record.remote.subscriptionUrl).origin === LEGACY_REMOTE_ORIGIN)) {
+        if (record.remote) await this.store.setRemote(id, key, { ...record.remote, lastError: REMOTE_ERROR });
+        throw new UserError(FIXED_EXIT_REMOTE_ERROR, 422);
+      }
       let created: RemoteSubscription | undefined;
       try {
         const source = await this.freshSource(record.profile.sourceUrl);
@@ -98,7 +106,7 @@ export class RemotePublisher {
         if (Buffer.byteLength(JSON.stringify(payload)) > 1_572_864) throw new UserError("远程订阅内容超过 1.5 MiB 限制。", 413);
         let remote: RemoteSubscription;
         if (record.remote) {
-          const result = await this.transport("PUT", `/api/remote-subscriptions/${record.remote.id}`, payload, record.remote.manageKey, this.controller.signal);
+          const result = await this.transport("PUT", `/api/remote-subscriptions/${record.remote.id}`, payload, record.remote.manageKey, this.controller.signal, new URL(record.remote.subscriptionUrl).origin);
           remote = validateRemote({ ...record.remote, updatedAt: result.updatedAt, lastError: undefined });
         } else {
           const result = await this.transport("POST", "/api/remote-subscriptions", payload, undefined, this.controller.signal) as SavedProfile & { updatedAt: number };
@@ -117,7 +125,7 @@ export class RemotePublisher {
     return this.serialize(id, async () => {
       const record = await this.store.find(id, key);
       if (record.remote) {
-        try { await this.transport("DELETE", `/api/remote-subscriptions/${record.remote.id}`, undefined, record.remote.manageKey, this.controller.signal); }
+        try { await this.transport("DELETE", `/api/remote-subscriptions/${record.remote.id}`, undefined, record.remote.manageKey, this.controller.signal, new URL(record.remote.subscriptionUrl).origin); }
         catch (error) { if (!(error instanceof UserError) || error.status !== 404) { await this.store.setRemote(id, key, { ...record.remote, lastError: REMOTE_ERROR }); throw new UserError(REMOTE_ERROR, 502); } }
         await this.store.setRemote(id, key, undefined);
       }

@@ -34,11 +34,11 @@
 .wizard-steps { display: flex; align-items: center; margin: 0 0 24px; padding: 0; list-style: none; border: 1px solid #e4e9f1; background: white; border-radius: 8px; }
 .wizard-steps li { flex: 1; display: flex; align-items: center; justify-content: center; gap: 9px; padding: 14px 10px; color: #9ba4b1; font-size: 12px; }
 .wizard-steps li + li { border-left: 1px solid #eef1f5; }
-.wizard-steps li > span { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: #f2f4f7; color: #9aa5b5; font-size: 10px; }
+.wizard-steps li button > span { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: #f2f4f7; color: #9aa5b5; font-size: 10px; }
 .wizard-steps li.active { color: #3267d5; font-weight: 550; }
-.wizard-steps li.active > span { color: white; background: #3267d5; }
+.wizard-steps li.active button > span { color: white; background: #3267d5; }
 .wizard-steps li.complete { color: #6885b2; }
-.wizard-steps li.complete > span { color: #537fc5; background: #edf3fd; }
+.wizard-steps li.complete button > span { color: #537fc5; background: #edf3fd; }
 .wizard-card { border: 1px solid #e4e9f0; border-radius: 10px; padding: 26px; background: white; }
 .wizard-card h2 { font-size: 16px; }
 .wizard-description { margin: 8px 0 24px; color: #8692a3; font-size: 12px; line-height: 1.7; }
@@ -88,7 +88,7 @@
   .wizard-heading h1 { font-size: 21px; }
   .wizard-heading > .button { padding: 7px 10px; }
   .wizard-steps li { gap: 5px; padding: 13px 5px; font-size: 10px; }
-  .wizard-steps li > span { height: 18px; width: 18px; font-size: 9px; }
+  .wizard-steps li button > span { height: 18px; width: 18px; font-size: 9px; }
   .wizard-card, .wizard-shell .groups-panel, .wizard-shell .rules-panel { padding: 18px; }
   .wizard-empty { min-height: 300px; }
   .library-row { padding: 18px 14px; gap: 10px; }
@@ -97,3 +97,24 @@
   .wizard-source-summary { flex-direction: column; gap: 4px; }
   .wizard-review-summary .review-rule { gap: 8px; font-size: 11px; }
 }
+/* CC brand mark; subscription rows retain their functional routing icons. */
+.wizard-brand > span {
+  background: transparent url('/brand/cc-logo.svg') center / contain no-repeat;
+  border-radius: 0;
+}
+.wizard-brand > span > svg { display: none; }
+
+.static-guide-trigger { align-self: flex-start; margin-bottom: 12px; }
+.static-guide-dialog { width: min(820px, calc(100vw - 48px)); max-height: calc(100vh - 48px); margin: auto; padding: 24px; border: 1px solid #dfe5ef; border-radius: 16px; background: #fff; color: #263245; box-shadow: 0 24px 80px #14283e33; }
+.static-guide-dialog::backdrop { background: #14283e66; }
+.static-guide-dialog header, .static-guide-dialog footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.static-guide-dialog h2 { font-size: 19px; font-weight: 600; }
+.static-guide-dialog header p { margin-top: 6px; color: #66758c; font-size: 12px; }
+.static-guide-scope { margin: 16px 0; font-size: 12px; line-height: 1.7; color: #66758c; }
+.static-guide-dialog textarea { display: block; width: 100%; height: min(440px, 48vh); padding: 16px; border: 1px solid #dfe5ef; border-radius: 10px; resize: none; background: #f7f9fc; color: #263245; font: 13px/1.8 ui-monospace, monospace; }
+.static-guide-dialog footer { margin-top: 18px; }
+.static-guide-dialog footer span { color: #3267d5; font-size: 12px; }
+
+.wizard-steps li button { display: flex; align-items: center; justify-content: center; gap: 9px; width: 100%; background: transparent; color: inherit; border: 0; font: inherit; cursor: pointer; }
+.wizard-steps li button:disabled { cursor: default; }
+.wizard-steps li button:focus-visible { outline: 2px solid #3267d5; outline-offset: 5px; border-radius: 4px; }

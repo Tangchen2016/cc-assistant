@@ -59,3 +59,11 @@ next-env.d.ts
 !.env.example
 
 /backups/
+
+.build/
+
+# Xcode per-user state
+**/xcuserdata/
+
+# Local signing certificate selector (private key stays in Keychain).
+/config/signing.local.json

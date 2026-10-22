@@ -1,0 +1,26 @@
+[Unit]
+Description=CC Assistant subscription service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cc-assistant
+Group=cc-assistant
+WorkingDirectory=/var/lib/cc-assistant
+Environment=PORT=19480
+Environment=PUBLIC_ORIGIN=https://node.tangchen02.top
+Environment=DATABASE_PATH=/var/lib/cc-assistant/cc-assistant.sqlite
+ExecStart=/opt/cc-assistant/runtime/bin/node /opt/cc-assistant/current/server.mjs
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/cc-assistant
+MemoryMax=192M
+
+[Install]
+WantedBy=multi-user.target

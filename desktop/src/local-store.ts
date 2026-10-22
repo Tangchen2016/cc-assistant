@@ -36,7 +36,7 @@ export function validateDraft(input: unknown): Profile {
         if (!group.chain || typeof group.chain !== "object" || Array.isArray(group.chain)) throw new UserError("草稿链式前置格式无效。");
         chain = { entry: text((group.chain as Record<string, unknown>).entry, 256) };
       }
-      return { name: text(group.name, 100), nodes: group.nodes.map((node) => text(node, 256)), ...(chain ? { chain } : {}) };
+      return { name: text(group.name, 100), nodes: group.nodes.map((node) => text(node, 256)), ...(chain ? { chain } : {}), ...(group.fixedExit !== undefined ? { fixedExit: text(group.fixedExit, 4096) } : {}) };
     }),
     rules: draft.rules.map((value) => {
       if (!value || typeof value !== "object" || Array.isArray(value)) throw new UserError("草稿规则格式无效。");

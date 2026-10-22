@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { parse } from "yaml";
 import { LocalStore } from "../desktop/src/local-store.ts";
-import { RemotePublisher, REMOTE_ORIGIN, REMOTE_ERROR, validateRemote, remoteCurl } from "../desktop/src/remote-share.ts";
+import { RemotePublisher, REMOTE_ORIGIN, REMOTE_ERROR, FIXED_EXIT_REMOTE_ERROR, validateRemote, remoteCurl } from "../desktop/src/remote-share.ts";
 import type { RemoteTransport } from "../desktop/src/remote-share.ts";
 import { startDesktopServer } from "../desktop/src/server.ts";
 import type { Profile, RemoteSubscription } from "../app/lib/types.ts";
@@ -20,6 +20,20 @@ async function fixture() {
   const saved = await store.create(profile);
   return { directory, store, saved, close: () => rm(directory, { recursive: true, force: true }) };
 }
+
+test("fixed exits cannot upload credentials to an unverified remote service", async () => {
+  const instance = await fixture(); let fetched = 0; let sent = 0;
+  const publisher = new RemotePublisher(instance.store, { intervalMs: 0, fixedExitVerified: false, fetchSource: async () => { fetched++; return source(); }, transport: async () => { sent++; return {}; } });
+  try {
+    const fixed: Profile = { ...profile, groups: [{ name: "固定组", nodes: [], fixedExit: "vless://00000000-0000-4000-8000-000000000001@exit.example.com:443?type=ws&security=tls" }] };
+    await instance.store.update(instance.saved.id, instance.saved.manageKey, fixed);
+    await assert.rejects(publisher.publish(instance.saved.id, instance.saved.manageKey, true), { message: FIXED_EXIT_REMOTE_ERROR, status: 422 });
+    await instance.store.setRemote(instance.saved.id, instance.saved.manageKey, remote);
+    await assert.rejects(publisher.publish(instance.saved.id, instance.saved.manageKey), { message: FIXED_EXIT_REMOTE_ERROR, status: 422 });
+    assert.equal(fetched, 0); assert.equal(sent, 0);
+    assert.equal((await instance.store.library()).current?.remote?.lastError, REMOTE_ERROR);
+  } finally { await publisher.stop(); await instance.close(); }
+});
 
 test("remote publication is explicit, each sync fetches fresh original source, persists only descriptor", async () => {
   const instance = await fixture(); let fetched = 0; let update = 1000;

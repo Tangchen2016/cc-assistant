@@ -3,13 +3,14 @@ import { validateProfile, transformSource } from "./profile.ts";
 import { fetchSource, parseSource } from "./source.ts";
 import type { SourceConfig } from "./source.ts";
 import type { Profile } from "./types.ts";
+import { renderShadowrocket, type MobileExport } from "./shadowrocket.ts";
 import { subscriptionPath, titleFilename } from "./subscription-name.ts";
 
 export const MAX_REMOTE_SOURCE = 1_572_864;
 export const MAX_REMOTE_BODY = 2_097_152;
 export type RemoteCache = { profile: Profile; sourceYaml: string; sourceFetchedAt: string; userInfo?: string };
 type LiveSource = { config: SourceConfig; fetchedAt: string; userInfo?: string };
-type RemoteRenderOptions = { fetchLive?: (sourceUrl: string, signal: AbortSignal) => Promise<LiveSource>; timeoutMs?: number };
+type RemoteRenderOptions = { format?: "clash" | MobileExport; identity?: string; fetchLive?: (sourceUrl: string, signal: AbortSignal) => Promise<LiveSource>; timeoutMs?: number };
 const bytes = (text: string) => new TextEncoder().encode(text).byteLength;
 
 export function remoteUserInfo(value: unknown) {
@@ -23,6 +24,10 @@ export function validateRemoteCache(input: unknown): RemoteCache {
   const value = input as Record<string, unknown>;
   const profile = validateProfile(value.profile);
   if (bytes(JSON.stringify(profile)) > 65_536) throw new UserError("自定义规则配置超过 64 KiB 限制。", 413);
+  if (profile.client === "shadowrocket") {
+    if (value.sourceYaml !== undefined && value.sourceYaml !== "" || value.userInfo !== undefined) throw new UserError("独立小火箭线路不接收源订阅资料。");
+    return { profile, sourceYaml: "", sourceFetchedAt: new Date().toISOString() };
+  }
   if (typeof value.sourceYaml !== "string" || !value.sourceYaml) throw new UserError("请上传有效的原始源订阅 YAML。");
   if (bytes(value.sourceYaml) > MAX_REMOTE_SOURCE) throw new UserError("远程备用源订阅超过 1.5 MiB 限制。", 413);
   if (typeof value.sourceFetchedAt !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(value.sourceFetchedAt) || !Number.isFinite(Date.parse(value.sourceFetchedAt))) throw new UserError("源订阅更新时间无效。");
@@ -53,24 +58,30 @@ async function fetchLiveSource(sourceUrl: string, signal: AbortSignal) {
 
 export async function renderRemoteSubscription(cache: RemoteCache, options: RemoteRenderOptions = {}) {
   const profile = validateProfile(cache.profile);
+  const standalone = profile.client === "shadowrocket";
+  const format = options.format ?? (standalone ? "shadowrocket-nodes" : "clash");
+  if (standalone && format === "clash") throw new UserError("请使用小火箭节点订阅或规则模块地址。", 422);
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
-  let source: LiveSource | undefined;
-  try {
+  let source: LiveSource | undefined = standalone ? { config: { proxies: [] }, fetchedAt: cache.sourceFetchedAt } : undefined;
+  if (!standalone) try {
     const timeout = new Promise<never>((_accept, reject) => {
       timer = setTimeout(() => { controller.abort(); reject(new Error("live source timeout")); }, options.timeoutMs ?? 6000);
     });
     try { source = await Promise.race([(options.fetchLive ?? fetchLiveSource)(profile.sourceUrl, controller.signal), timeout]); }
     catch { /* A cached original source is the explicitly authorized offline backup. */ }
   } finally { if (timer) clearTimeout(timer); controller.abort(); }
-  const mode = source ? "live" : "cache";
+  const mode = standalone ? "standalone" : source ? "live" : "cache";
   if (!source) {
     if (typeof cache.sourceYaml !== "string" || bytes(cache.sourceYaml) > MAX_REMOTE_SOURCE) throw new UserError("远程备用源订阅无效，请在 App 中重新同步。", 502);
     source = { config: parseSource(cache.sourceYaml), fetchedAt: cache.sourceFetchedAt, userInfo: remoteUserInfo(cache.userInfo) };
   }
-  const { yaml, warnings } = transformSource(source.config, profile);
+  const mobile = format !== "clash" ? renderShadowrocket(source.config, profile, options.identity ?? "", format) : undefined;
+  const { yaml, warnings } = mobile ? { yaml: mobile.text, warnings: [] } : transformSource(source.config, profile);
+  const disposition = mobile ? `attachment; filename="claude.${mobile.extension}"; filename*=UTF-8''${encodeURIComponent(mobile.title)}.${mobile.extension}` : titleFilename(profile.name);
   const headers = new Headers({
-    ...privateHeaders, "Content-Type": "application/yaml; charset=utf-8", "Content-Disposition": titleFilename(profile.name),
+    ...privateHeaders, "Content-Type": mobile ? "text/plain; charset=utf-8" : "application/yaml; charset=utf-8", "Content-Disposition": disposition,
+    "Profile-Title": `base64:${btoa(String.fromCharCode(...new TextEncoder().encode(mobile?.title ?? profile.name)))}`,
     "X-Subscription-Source": mode, "X-Source-Updated-At": source.fetchedAt, "X-Subscription-Warnings": String(warnings.length),
   });
   const userInfo = remoteUserInfo(source.userInfo);
@@ -87,5 +98,5 @@ export async function remoteDownload(
   validateRemoteIdentity(id, key);
   // Authenticate before any source fetch or cache content is exposed.
   const cache = await find(id, key);
-  return renderRemoteSubscription(cache, options);
+  return renderRemoteSubscription(cache, { ...options, identity: id });
 }

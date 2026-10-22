@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#faf9f6"><meta name="robots" content="noindex,nofollow">
+<title>号池管理 · cc助手</title><meta name="description" content="在手机上记录账号、订阅和到期日。资料仅保存在当前浏览器。">
+<link rel="icon" href="../assets/logo.svg?v=terracotta"><link rel="stylesheet" href="accounts.css?v=1"><script type="module" src="accounts.js?v=1"></script>
+</head>
+<body><div class="page">
+<header><a class="brand" href="../"><img src="../assets/logo.svg?v=terracotta" alt="" width="30" height="30">cc助手</a><a href="../check/">环境检测 ↗</a></header>
+<main>
+<section class="heading"><p class="eyebrow">你的账号，随手记好。</p><h1 id="page-title">号池管理</h1><p>记录账号状态，不用重新登录。</p></section>
+<div id="load-error" class="error" role="alert" hidden></div>
+<section class="overview" aria-label="账号概况"><div><strong id="account-count">0</strong><span>已记录账号</span></div><div><strong id="expiry-count">0</strong><span>7 天内到期</span></div><button id="trash" type="button">回收站 <span id="trash-count">0</span></button></section>
+<div class="toolbar"><label class="search"><span class="sr-only">搜索账号</span><input id="search" type="search" placeholder="搜索邮箱、备注或订阅" autocomplete="off"></label><label><span class="sr-only">账号状态</span><select id="filter"><option value="">全部状态</option><option>备用</option><option>使用中</option><option>需处理</option><option>已停用</option></select></label></div>
+<div class="list-heading"><span id="result-count">0 条记录</span><button id="add" class="primary" type="button">＋ 新增账号</button></div>
+<p id="feedback" role="status" aria-live="polite"></p>
+<section id="accounts" aria-label="账号记录"></section>
+<section id="empty" class="empty"><span class="empty-icon" aria-hidden="true">＋</span><h2>从第一个账号开始</h2><p>邮箱、订阅和到期日，放在一起看。</p><button id="empty-add" type="button">新增账号</button></section>
+<details class="transfer"><summary>备份与转移</summary><p>资料仅在当前浏览器保存，Mac 与 iPhone 不自动同步。定期导出备份，换设备时再导入。</p><div class="transfer-actions"><button id="export" type="button">导出 JSON 备份</button><label class="file-button">导入备份<input id="import" type="file" accept=".json,application/json"></label></div><p>导入会合并新记录；遇到同邮箱或版本冲突时整份文件不导入，已有资料不会被覆盖。也可导入 Mac 号池的 accounts.json 文件。</p><p>备份含账号邮箱和备注，请自行妥善保存。</p></details>
+<footer>只在当前浏览器保存，不上传账号资料。<br>清理网站数据或使用无痕浏览，可能导致本地记录丢失。<br>不保存密码、Cookie 或访问令牌，不自动认证账号。</footer>
+<noscript>请启用 JavaScript 后使用本地号池。</noscript>
+</main></div>
+<dialog id="editor" aria-labelledby="editor-title"><form id="account-form"><div class="editor-header"><h2 id="editor-title">新增账号</h2><button id="cancel" class="close" type="button" aria-label="取消编辑">×</button></div><div class="fields">
+<label>账号邮箱<input name="email" type="email" inputmode="email" autocomplete="off" autocapitalize="none" spellcheck="false" maxlength="254" required placeholder="name@example.com"></label>
+<label>备注名 <span>选填</span><input name="label" maxlength="100" placeholder="便于识别的名称"></label>
+<label>账号状态<select name="status"><option>备用</option><option>使用中</option><option>需处理</option><option>已停用</option></select></label>
+<label>订阅类型 <span>选填</span><input name="subscription" maxlength="100" placeholder="例如 Free、Pro、Max"></label>
+<label>订阅到期日 <span>选填</span><input name="expiresAt" type="date"></label>
+<label>创建时间<input name="createdAt" type="datetime-local" required step="60"></label>
+<label>备注 <span>选填</span><textarea name="notes" rows="3" maxlength="4000" placeholder="记录你需要的信息"></textarea></label>
+</div><p id="editor-error" class="error" role="alert" hidden></p><div class="editor-footer"><span>本地记账，无需登录</span><button class="primary" type="submit">保存账号</button></div></form></dialog>
+<template id="account-template"><article class="account-card"><div class="card-top"><h2 class="account-name"></h2><span class="status"></span></div><p class="email"></p><dl><div><dt>订阅类型</dt><dd class="subscription"></dd></div><div><dt>到期日</dt><dd class="expiry"></dd><dd class="expiry-hint"></dd></div></dl><p class="created"></p><details class="notes"><summary>账号备注</summary><p></p></details><div class="card-actions"><button class="edit" type="button">编辑账号</button><button class="remove" type="button">移入回收站</button><button class="restore" type="button" hidden>还原账号</button></div></article></template>
+</body></html>

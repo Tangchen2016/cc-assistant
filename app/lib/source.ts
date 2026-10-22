@@ -1,3 +1,5 @@
+import { isPublicAddress, validateSourceUrl } from "./source-validation.ts";
+export { isPublicAddress, validateSourceUrl } from "./source-validation.ts";
 import ipaddr from "ipaddr.js";
 import { parseDocument } from "yaml";
 import { UserError } from "./errors.ts";
@@ -12,24 +14,14 @@ type SourceOptions = {
 };
 const MAX_SOURCE = 2 * 1024 * 1024;
 
-export function isPublicAddress(address: string) {
-  try { return ipaddr.process(address).range() === "unicast"; }
-  catch { return false; }
-}
-
-export function validateSourceUrl(value: unknown) {
-  if (typeof value !== "string" || value.length > 4096) throw new UserError("请输入有效的源订阅地址。");
-  let url: URL;
-  try { url = new URL(value); } catch { throw new UserError("请输入完整的 HTTP / HTTPS 订阅地址。"); }
-  if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.hash) {
-    throw new UserError("仅支持不含账号密码和片段的 HTTP / HTTPS 订阅地址。");
-  }
-  const host = url.hostname.replace(/^\[|\]$/g, "").toLowerCase().replace(/\.$/, "");
-  if (!host || host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || host.endsWith(".internal") || !host.includes("." ) && !host.includes(":")) {
-    throw new UserError("订阅地址必须指向公共网络。");
-  }
-  if (ipaddr.isValid(host) && !isPublicAddress(host)) throw new UserError("禁止访问本机、内网或特殊用途地址。");
-  return url;
+/** Keeps only numeric upload/download/total/expire fields; some providers send an empty `expire=` for no expiry. */
+export function normalizeUserInfo(value: string | null | undefined) {
+  if (!value || value.length > 256) return undefined;
+  const parts = value.split(";").map((part) => part.trim()).filter(Boolean);
+  // Anything other than a known key with a number (or nothing) rejects the whole header.
+  if (!parts.every((part) => /^(?:upload|download|total|expire)=\d*$/.test(part))) return undefined;
+  const fields = parts.filter((part) => !part.endsWith("="));
+  return fields.length ? fields.join("; ") : undefined;
 }
 
 export async function publicDns(hostname: string, signal: AbortSignal, fetcher: typeof fetch = globalThis.fetch) {
@@ -100,7 +92,7 @@ export async function fetchSource(sourceUrl: string, options: SourceOptions = {}
       if (!addresses.length || addresses.some((address) => !isPublicAddress(address))) throw new UserError("订阅域名解析到内网或特殊用途地址，已拒绝请求。", 422);
       const response = await fetcher(url.href, {
         redirect: "manual", signal: controller.signal, cache: "no-store",
-        headers: { "User-Agent": "clash.meta/subscription-enhancer", Accept: "application/yaml,text/yaml,text/plain,*/*", "Cache-Control": "no-cache" },
+        headers: { "User-Agent": "clash-verge/v2.0.0", Accept: "application/yaml,text/yaml,text/plain,*/*", "Cache-Control": "no-cache" },
       });
       if ([301, 302, 303, 307, 308].includes(response.status)) {
         const location = response.headers.get("Location");
@@ -132,7 +124,7 @@ export async function fetchSource(sourceUrl: string, options: SourceOptions = {}
       let offset = 0;
       for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
       const metadata = response.headers.get("Subscription-Userinfo");
-      const userInfo = metadata && metadata.length <= 256 && /^(?:upload|download|total|expire)=\d+(?:\s*;\s*(?:upload|download|total|expire)=\d+)*\s*$/.test(metadata) ? metadata : undefined;
+      const userInfo = normalizeUserInfo(metadata);
       return { config: parseSource(new TextDecoder().decode(bytes)), fetchedAt: new Date().toISOString(), userInfo, sourceName: sourceName(response.headers, sourceUrl) };
     }
     throw new UserError("源订阅重定向无效。", 502);
