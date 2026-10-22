@@ -1,0 +1,24 @@
+{
+  "configurations": [
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:cc-assistant}",
+      "name": "Debug SubscriptionStudio",
+      "target": "SubscriptionStudio",
+      "configuration": "debug",
+      "preLaunchTask": "swift: Build Debug SubscriptionStudio"
+    },
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:cc-assistant}",
+      "name": "Release SubscriptionStudio",
+      "target": "SubscriptionStudio",
+      "configuration": "release",
+      "preLaunchTask": "swift: Build Release SubscriptionStudio"
+    }
+  ]
+}
