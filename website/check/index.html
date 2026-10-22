@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#fbfaf8"><title>浏览器环境检测 · cc助手</title><meta name="description" content="从当前浏览器检测网络出口 IP、地区和 Claude 域名连接状态。"><link rel="icon" href="../assets/logo.svg?v=terracotta"><link rel="stylesheet" href="check.css?v=15"><script type="module" src="check.js?v=18"></script></head>
+<body><div class="page">
+<header><a class="brand" href="../"><img src="../assets/logo.svg?v=terracotta" width="24" height="24" alt="">cc助手</a><span class="header-note">浏览器直连，不经本站服务器</span></header>
+<main>
+<section class="hero"><h1>看看你正在从哪里连接</h1><p>用当前浏览器直接核对 Claude 的网络出口。使用代理时，请先确认已连接。</p><div class="check-stage"><span class="check-orbit" aria-hidden="true"></span><span class="check-ripple" aria-hidden="true"></span><button class="primary" id="start" type="button">开始检测</button></div></section>
+
+<section class="summary" aria-live="polite" aria-atomic="true"><div class="summary-top"><span id="summary-label">等待检测</span><span id="summary-status" class="summary-status" hidden></span></div><h2 id="summary-title">只核对 Claude 的出口。</h2><div id="summary-ips" class="summary-ips" hidden></div><p id="summary-detail">分别检查 Claude、Anthropic 及登录、Artifacts 等域名的实际出口。</p><div id="continue" class="continue" role="status" hidden><span></span><div class="continue-actions"><button id="continue-stop" class="link" type="button">取消</button><button id="continue-go" class="primary" type="button">立即打开</button></div></div></section>
+
+<section class="block facts">
+<div class="fact timezone-info"><h2 id="timezone-title">浏览器时区</h2><div id="timezone-value" class="fact-value">尚未检测</div><p>仅供参考，代理不会自动改变时区。</p></div>
+<div class="fact ip-marker"><h2 id="marker-title">标记的 IP</h2><div id="marked-ip" class="fact-value">尚未标记</div><p id="marked-detail">只保留一个标记，新标记会替换旧标记；仅保存在当前浏览器。</p><div class="marker-actions"><label for="mark-choice" class="sr-only">本次出口</label><select id="mark-choice" disabled><option value="">检测后可选择 IP</option></select><button id="save" type="button" disabled>标记此 IP</button><button id="clear" class="link" type="button" hidden>取消标记</button></div></div>
+</section>
+
+<details class="block"><summary class="block-head"><h2 id="results-title">检测详情 · Claude 域名</h2><span id="details-count" class="count">8 个域名</span></summary><div id="results" class="results"></div></details>
+
+<details class="block deps"><summary class="block-head"><h2>依赖服务 · 仅可达性</h2><span id="dependencies-count" class="count">10 个域名</span></summary><p class="dependencies-note">这些服务不向网页返回出口 IP，这里只确认能否连接；实际线路请在桌面端「检测 → 域名分流核验」查看。</p><div id="dependencies" class="results"></div></details>
+
+<div class="actions"><button id="copy" type="button" disabled>复制检测结果</button><button id="copy-ai" type="button" disabled>复制 AI 排查提示词</button></div><p id="feedback" role="status"></p>
+
+<details class="block help"><summary class="block-head"><h2>怎么判断检测结果</h2></summary><p>重点核对各 Claude 域名是否使用同一个、你期望的出口。如果使用固定线路，对照你自己的静态 IP；地区由目标网站识别，仅供参考。</p><p>显示“无法读取”时，可能是浏览器跨域限制、网络拦截或连接失败，不等同于服务不可用。可以点 ↗ 打开检测地址查看原始文本，再用“手动核对”粘贴。</p><p>检测页只能测当前浏览器的请求路径，无法读取小火箭配置，也不能代表其他 App、API 调用或登录后的可用性。</p></details>
+</main>
+<footer>检测由当前浏览器直接发起，不通过本站服务器转发。只在本机保存你标记的一个 IP，不上传，不需要登录。</footer>
+</div></body></html>
